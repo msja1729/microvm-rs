@@ -3,7 +3,7 @@
 use kvm_ioctls::{VcpuExit, VcpuFd};
 use log::debug;
 
-use crate::devices::pio_bus::PioBus;
+use crate::devices::pio_bus::{PioAction, PioBus};
 use crate::error::{Error, Result};
 
 /// Why the guest stopped running normally.
@@ -13,6 +13,8 @@ pub enum GuestStop {
     Halted,
     /// KVM_EXIT_SHUTDOWN: triple fault or similar.
     Shutdown,
+    /// The guest asked a device (the i8042) for a system reset.
+    Reset,
 }
 
 /// Run the vCPU until the guest halts or shuts down.
@@ -31,8 +33,12 @@ pub fn run(vcpu: &mut VcpuFd, bus: &mut PioBus) -> Result<GuestStop> {
             }
         };
         match exit {
-            VcpuExit::IoOut(port, data) => bus.write(port, data)?,
-            VcpuExit::IoIn(port, data) => bus.read(port, data),
+            VcpuExit::IoOut(port, data) => {
+                if bus.write(port, data)? == PioAction::Reset {
+                    return Ok(GuestStop::Reset);
+                }
+            }
+            VcpuExit::IoIn(port, data) => bus.read(port, data)?,
             VcpuExit::MmioRead(addr, data) => {
                 debug!("unhandled MMIO read: addr={addr:#x} size={}", data.len());
                 data.fill(0xff);

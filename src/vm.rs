@@ -4,7 +4,7 @@ use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
-use kvm_bindings::kvm_userspace_memory_region;
+use kvm_bindings::{kvm_pit_config, kvm_userspace_memory_region};
 use kvm_ioctls::{Cap, Kvm, VmFd};
 use vm_memory::{GuestAddress, GuestMemoryBackend, GuestMemoryMmap};
 
@@ -92,4 +92,30 @@ pub fn create(kvm_device: &Path, mem_mib: u64, min_mem_mib: u64) -> Result<Vm> {
     })?;
 
     Ok(Vm { kvm, fd, memory })
+}
+
+impl Vm {
+    /// Create the in-kernel PIC/IOAPIC/LAPIC and the in-kernel PIT (`boot` mode only).
+    /// Must run before any vCPU is created, so each vCPU gets an in-kernel LAPIC.
+    pub fn setup_irqchip(&self) -> Result<()> {
+        if !self.kvm.check_extension(Cap::Irqchip) {
+            return Err(Error::MissingCapability("KVM_CAP_IRQCHIP"));
+        }
+        if !self.kvm.check_extension(Cap::Irqfd) {
+            return Err(Error::MissingCapability("KVM_CAP_IRQFD"));
+        }
+        // KVM_CREATE_IRQCHIP: emulate the PICs, IOAPIC and LAPICs in the kernel, with
+        // default routing of GSIs 0-15 to both the PIC and the IOAPIC.
+        self.fd.create_irq_chip().map_err(|source| Error::Kvm {
+            op: "KVM_CREATE_IRQCHIP",
+            source,
+        })?;
+        // KVM_CREATE_PIT2: an in-kernel 8254 timer on ports 0x40-0x43 feeding IRQ 0.
+        self.fd
+            .create_pit2(kvm_pit_config::default())
+            .map_err(|source| Error::Kvm {
+                op: "KVM_CREATE_PIT2",
+                source,
+            })
+    }
 }

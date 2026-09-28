@@ -30,6 +30,22 @@ pub enum Error {
         size: usize,
         max: usize,
     },
+    #[error("cannot read kernel {}: {source}", path.display())]
+    KernelRead {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[error("cannot load kernel {}: {reason}", path.display())]
+    KernelLoad { path: PathBuf, reason: String },
+    #[error("cannot read initrd {}: {source}", path.display())]
+    InitrdRead {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[error("initrd {} ({size} bytes) does not fit in guest memory above the kernel", path.display())]
+    InitrdTooLarge { path: PathBuf, size: u64 },
+    #[error("invalid kernel command line: {0}")]
+    Cmdline(String),
 
     // ---- Unexpected VM exits and internal errors (exit code 1) ----
     #[error("KVM ioctl {op} failed: {source}")]
@@ -41,6 +57,14 @@ pub enum Error {
     GuestMemory(String),
     #[error("serial output error: {0}")]
     SerialOutput(String),
+    #[error("serial input error: {0}")]
+    SerialInput(String),
+    #[error("{0} lock poisoned by a panicked thread")]
+    LockPoisoned(&'static str),
+    #[error("cannot start thread: {0}")]
+    Thread(String),
+    #[error("terminal error: {0}")]
+    Terminal(String),
     #[error("unexpected VM exit: {0}")]
     UnexpectedExit(String),
     #[error("guest shut down unexpectedly (KVM_EXIT_SHUTDOWN, e.g. a triple fault)")]
@@ -57,10 +81,19 @@ impl Error {
             | Error::MissingCapability(_)
             | Error::InvalidMemSize { .. }
             | Error::ImageRead { .. }
-            | Error::ImageSize { .. } => 2,
+            | Error::ImageSize { .. }
+            | Error::KernelRead { .. }
+            | Error::KernelLoad { .. }
+            | Error::InitrdRead { .. }
+            | Error::InitrdTooLarge { .. }
+            | Error::Cmdline(_) => 2,
             Error::Kvm { .. }
             | Error::GuestMemory(_)
             | Error::SerialOutput(_)
+            | Error::SerialInput(_)
+            | Error::LockPoisoned(_)
+            | Error::Thread(_)
+            | Error::Terminal(_)
             | Error::UnexpectedExit(_)
             | Error::GuestShutdown => 1,
         }

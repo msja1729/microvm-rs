@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use kvm_hello::{run_raw, RawConfig, RawMode};
+use kvm_hello::{run_boot, run_raw, BootConfig, RawConfig, RawMode, DEFAULT_CMDLINE};
 
 #[derive(Parser)]
 #[command(
@@ -40,6 +40,21 @@ enum Command {
         /// Guest RAM in MiB.
         #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u64).range(1..=3072))]
         mem_mib: u64,
+    },
+    /// Boot a Linux bzImage with a serial console on stdin/stdout.
+    Boot {
+        /// Linux kernel in bzImage format.
+        #[arg(long)]
+        kernel: PathBuf,
+        /// Initramfs (cpio archive).
+        #[arg(long)]
+        initrd: Option<PathBuf>,
+        /// Guest RAM in MiB.
+        #[arg(long, default_value_t = 512, value_parser = clap::value_parser!(u64).range(128..=3072))]
+        mem_mib: u64,
+        /// Kernel command line.
+        #[arg(long, default_value = DEFAULT_CMDLINE)]
+        cmdline: String,
     },
 }
 
@@ -71,6 +86,18 @@ fn main() -> ExitCode {
             };
             run_raw(&config, std::io::stdout()).map(|_| ())
         }
+        Command::Boot {
+            kernel,
+            initrd,
+            mem_mib,
+            cmdline,
+        } => run_boot(&BootConfig {
+            kvm_device: cli.kvm_device,
+            kernel,
+            initrd,
+            mem_mib,
+            cmdline,
+        }),
     };
 
     match result {

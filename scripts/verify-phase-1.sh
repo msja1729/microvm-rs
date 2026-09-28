@@ -70,9 +70,35 @@ long_mode_hello() {
     [ "$code" -eq 0 ] && cmp "$LOG_DIR/ac-2.2.stdout" <(printf 'Hello from long mode!\n')
 }
 
+kernel_is_6_12() {
+    file artifacts/bzImage
+    file artifacts/bzImage | grep -q 'bzImage, version 6\.12\.'
+}
+
+initramfs_contract() {
+    local init
+    init=$(cpio --quiet -i --to-stdout init < artifacts/initramfs.cpio) || return 1
+    echo "$init"
+    for mount in proc sysfs devtmpfs; do
+        grep -q "mount -t $mount" <<<"$init" || { echo "does not mount $mount"; return 1; }
+    done
+    grep -q 'echo PHASE1-INIT-OK' <<<"$init" \
+        && grep -q "export PS1='phase1# '" <<<"$init" \
+        && grep -q 'exec setsid cttyhack /bin/sh' <<<"$init" \
+        && cpio --quiet -it < artifacts/initramfs.cpio | grep -qx 'bin/busybox'
+}
+
 # Setup: build the VMM and the raw guests (their failures surface in the checks below).
 cargo build >"$LOG_DIR/build.log" 2>&1 || echo "note: cargo build failed (see $LOG_DIR/build.log)"
 scripts/build-guests.sh >"$LOG_DIR/build-guests.log" 2>&1 || echo "note: build-guests.sh failed (see $LOG_DIR/build-guests.log)"
+# The kernel takes many minutes to build, so only build artifacts that are missing.
+if [ ! -f artifacts/bzImage ]; then
+    echo "building artifacts/bzImage (slow; log: $LOG_DIR/build-kernel.log)"
+    scripts/build-kernel.sh >"$LOG_DIR/build-kernel.log" 2>&1 || echo "note: build-kernel.sh failed"
+fi
+if [ ! -f artifacts/initramfs.cpio ]; then
+    scripts/build-initramfs.sh >"$LOG_DIR/build-initramfs.log" 2>&1 || echo "note: build-initramfs.sh failed"
+fi
 
 echo "== Always =="
 check AC-0.1 "cargo fmt --check" cargo fmt --check
@@ -91,6 +117,17 @@ check AC-2.2 "raw long-mode guest prints greeting, exits 0" long_mode_hello
 check AC-2.3 "EFER.LMA = 1 and CS.L = 1 after halt" cargo test --test m2_long_mode vcpu_is_in_long_mode_after_halt
 check AC-2.4 "cargo test --test m2_long_mode" cargo test --test m2_long_mode
 check AC-2.5 "M1 tests still pass" cargo test --test m1_real_mode
+
+echo "== M3 — Linux boot =="
+m3() { cargo test --test m3_linux_boot -- --ignored --exact "$1"; }
+check AC-3.1 "artifacts/bzImage is Linux 6.12" kernel_is_6_12
+check AC-3.2 "artifacts/initramfs.cpio meets the /init contract" initramfs_contract
+check AC-3.3 "PHASE1-INIT-OK within 30 s" m3 boot_prints_init_marker_within_30s
+check AC-3.4 "prompt appears; echo vmm-\$((6*7)) prints vmm-42" m3 shell_receives_keyboard_input
+check AC-3.5 "uname -r starts with 6.12" m3 uname_reports_linux_6_12
+check AC-3.6 "reboot -f exits 0 within 10 s, terminal restored" m3 reboot_exits_zero_and_restores_terminal
+check AC-3.7 "cargo test --test m3_linux_boot -- --ignored" cargo test --test m3_linux_boot -- --ignored
+check AC-3.8 "M1 and M2 tests still pass" cargo test --test m1_real_mode --test m2_long_mode
 
 if [ "$failed" -eq 0 ]; then echo "RESULT: PASS"; else echo "RESULT: FAIL"; fi
 exit "$failed"

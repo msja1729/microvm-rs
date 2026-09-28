@@ -5,12 +5,21 @@ use log::debug;
 
 use crate::error::Result;
 
+/// What the VMM must do after a device handled a guest write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PioAction {
+    /// Keep running the guest.
+    Continue,
+    /// The guest asked for a system reset; stop the VM.
+    Reset,
+}
+
 /// A device that owns a contiguous range of I/O ports.
 pub trait PioDevice {
     /// Handle an `IN` at `offset` bytes into the device's range; fill all of `data`.
-    fn read(&mut self, offset: u16, data: &mut [u8]);
+    fn read(&mut self, offset: u16, data: &mut [u8]) -> Result<()>;
     /// Handle an `OUT` at `offset` bytes into the device's range.
-    fn write(&mut self, offset: u16, data: &[u8]) -> Result<()>;
+    fn write(&mut self, offset: u16, data: &[u8]) -> Result<PioAction>;
 }
 
 struct Entry {
@@ -41,22 +50,23 @@ impl PioBus {
         })
     }
 
-    pub fn read(&mut self, port: u16, data: &mut [u8]) {
+    pub fn read(&mut self, port: u16, data: &mut [u8]) -> Result<()> {
         match self.find(port) {
             Some((offset, device)) => device.read(offset, data),
             None => {
                 debug!("unhandled port read: port={port:#x} size={}", data.len());
                 data.fill(0xff);
+                Ok(())
             }
         }
     }
 
-    pub fn write(&mut self, port: u16, data: &[u8]) -> Result<()> {
+    pub fn write(&mut self, port: u16, data: &[u8]) -> Result<PioAction> {
         match self.find(port) {
             Some((offset, device)) => device.write(offset, data),
             None => {
                 debug!("unhandled port write: port={port:#x} data={data:02x?}");
-                Ok(())
+                Ok(PioAction::Continue)
             }
         }
     }

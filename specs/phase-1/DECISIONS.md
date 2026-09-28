@@ -68,3 +68,46 @@ Choices made inside the spec during implementation. Format: question → options
 
 ### D13. How AC-2.3 reads the registers
 - **Chose:** the in-process test calls `kvm_hello::run_raw`, which returns `RawOutcome { sregs }` after `HLT`, with serial output going to a test-owned `Arc<Mutex<Vec<u8>>>` writer. (Resolution of Q4.)
+
+## M3 — Linux boot
+
+### D14. Pinned kernel release
+- **Chose:** Linux `6.12.111` (the newest 6.12.y on kernel.org at build time), SHA-256 `9e59dc67…7849810` from kernel.org's `sha256sums.asc`, checked by `build-kernel.sh`.
+
+### D15. No `/dev/console` node in the initramfs
+- **Options:** build the cpio with `fakeroot` (not installed) or the kernel tree's `gen_init_cpio`; hand-write a device node into the archive; have `/init` attach itself to the console.
+- **Chose:** `/init` mounts devtmpfs first, then `exec 0</dev/console 1>/dev/console 2>&1`, then mounts proc and sysfs and prints the marker.
+- **Why:** creating a device node needs root; the other options couple the initramfs build to the kernel build or add tools. The kernel runs `/init` even when it cannot open an initial console. All three mounts still happen before the marker, as the spec requires.
+
+### D16. Sharing the UART between threads
+- **Chose:** `Arc<Mutex<SerialDevice>>`; the vCPU thread locks it per port access (`SharedSerial`), the stdin thread per chunk of input. When the 64-byte RX FIFO is full the stdin thread sleeps 1 ms and retries. (Resolution of Q3.)
+- **Why:** the guest drains the FIFO only from its interrupt handler, so input must wait for it rather than be dropped; 1 ms is far below human typing speed.
+
+### D17. Restoring the terminal
+- **Options:** Drop guard + panic hook + signal handler; Drop guard + signal handler.
+- **Chose:** Drop guard (normal return, `?` errors, unwinding panics on the vCPU thread) plus a SIGINT/SIGTERM/SIGHUP handler that calls only async-signal-safe `tcsetattr`, `write` and `_exit`. The saved `termios` lives in a `OnceLock`, readable from the handler.
+- **Why:** unwinding already runs the guard, so a panic hook would be redundant. A panic on the stdin thread doesn't end the VMM; the terminal is restored when the VM exits.
+
+### D18. Boot parameters
+- **Chose:** start `boot_params.hdr` from the kernel's own setup header (as returned by `linux-loader`), then set `boot_flag`, `header`, `type_of_loader = 0xff`, `cmd_line_ptr`, `ramdisk_image/size`, and the three-entry e820 map. Reject kernels whose `xloadflags` lack `XLF_KERNEL_64`.
+- **Why:** the boot protocol says the loader should keep the header fields the kernel provides; the 64-bit flag check turns a would-be triple fault into a clear exit-2 error.
+
+### D19. Initrd lower bound
+- **Chose:** the initrd must start above `max(kernel_end, load_addr + init_size)`, not just above the loaded bzImage.
+- **Why:** the kernel decompresses in place and uses `init_size` bytes; an initrd inside that range would be overwritten during boot.
+
+### D20. `ByteValued` for `boot_params`
+- **Chose:** a `#[repr(transparent)]` newtype `BootParams` with a documented `unsafe impl ByteValued`, written with `write_obj`.
+- **Why:** `linux-loader 0.14` does not implement `ByteValued` for `boot_params`, and Rust forbids implementing a foreign trait on a foreign type.
+
+### D21. Interrupt-controller details
+- **Chose:** `KVM_CREATE_PIT2` with default flags; no LAPIC LINT0/LINT1 programming from the VMM; `KVM_IRQFD` on GSI 4.
+- **Why:** Linux programs the LAPIC into virtual-wire mode itself when it finds no MP table (spec pitfall 6); boot and interactive input work without VMM-side LAPIC setup.
+
+### D22. Making AC-3.6 prove something
+- **Chose:** the test's wrapper runs `stty echo` before starting the VMM, then checks `icanon` and `echo` in `stty -a` after it exits.
+- **Why:** rexpect starts its pty with ECHO off; without `stty echo` a VMM that never restored the terminal would still produce "echo off" and a weaker test.
+
+### D23. M3 tests run one VM at a time
+- **Chose:** a `static Mutex<()>` in `tests/m3_linux_boot.rs`; each test holds it for its whole run.
+- **Why:** four 512 MiB guests booting in parallel on the nested WSL2 host would make the 30 s / 10 s timing criteria depend on the harness's thread count.

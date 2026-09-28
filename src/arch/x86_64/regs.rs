@@ -78,8 +78,14 @@ pub fn setup_cpuid(kvm: &Kvm, vcpu: &VcpuFd) -> Result<()> {
 
 /// Put the vCPU directly in 64-bit long mode: write the GDT, an empty IDT and the
 /// identity-mapping page tables into guest memory, then load the matching special
-/// registers and start at `entry` with interrupts disabled.
-pub fn setup_long_mode(vcpu: &VcpuFd, memory: &GuestMemoryMmap, entry: u64) -> Result<()> {
+/// registers and start at `entry` with interrupts disabled. `rsi` is handed to the
+/// guest in RSI (the Linux 64-bit boot protocol puts the `boot_params` address there).
+pub fn setup_long_mode(
+    vcpu: &VcpuFd,
+    memory: &GuestMemoryMmap,
+    entry: u64,
+    rsi: u64,
+) -> Result<()> {
     let table = gdt::table();
     for (i, descriptor) in table.iter().enumerate() {
         memory
@@ -127,6 +133,7 @@ pub fn setup_long_mode(vcpu: &VcpuFd, memory: &GuestMemoryMmap, entry: u64) -> R
     let regs = kvm_regs {
         rip: entry,
         rsp: BOOT_STACK_POINTER,
+        rsi,
         rflags: RFLAGS_RESERVED,
         ..Default::default()
     };
