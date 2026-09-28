@@ -88,6 +88,43 @@ initramfs_contract() {
         && cpio --quiet -it < artifacts/initramfs.cpio | grep -qx 'bin/busybox'
 }
 
+# Words in the part of notes/phase-1.md under heading $1 (up to the next heading of
+# the same or higher level). With $2, heading $1 only counts inside section $2.
+notes_section_words() {
+    awk -v h="$1" -v parent="${2:-}" '
+        parent != "" && index($0, parent) == 1 { in_parent = 1; next }
+        parent != "" && /^## / { in_parent = 0 }
+        on && /^#+ / && index($0, " ") <= level { on = 0 }
+        (parent == "" || in_parent) && index($0, h) == 1 { on = 1; level = index($0, " "); next }
+        on { print }
+    ' notes/phase-1.md | wc -w
+}
+
+notes_complete() {
+    local ok=0 words heading answered
+    [ -f notes/phase-1.md ] || { echo "notes/phase-1.md missing"; return 1; }
+    for heading in "## What each milestone does" "## VM-exit handling flow"; do
+        words=$(notes_section_words "$heading")
+        echo "$heading: $words words"
+        [ "$words" -ge 50 ] || { echo "  -> too short or missing (need >= 50 words)"; ok=1; }
+    done
+    for heading in "### M1" "### M2" "### M3"; do
+        words=$(notes_section_words "$heading" "## What each milestone does")
+        echo "$heading explanation: $words words"
+        [ "$words" -ge 50 ] || { echo "  -> too short or missing (need >= 50 words)"; ok=1; }
+    done
+    # A question counts only if the next non-blank line is an answer, not another
+    # question or a heading.
+    answered=$(awk '
+        /^\*\*Q[0-9]+\./ { pending = 1; next }
+        pending && NF { if ($0 !~ /^(\*\*Q[0-9]+\.|#)/) n++; pending = 0 }
+        END { print n + 0 }
+    ' notes/phase-1.md)
+    echo "answered interview questions: $answered"
+    [ "$answered" -ge 10 ] || { echo "  -> need at least 10"; ok=1; }
+    return $ok
+}
+
 # Setup: build the VMM and the raw guests (their failures surface in the checks below).
 cargo build >"$LOG_DIR/build.log" 2>&1 || echo "note: cargo build failed (see $LOG_DIR/build.log)"
 scripts/build-guests.sh >"$LOG_DIR/build-guests.log" 2>&1 || echo "note: build-guests.sh failed (see $LOG_DIR/build-guests.log)"
@@ -128,6 +165,9 @@ check AC-3.5 "uname -r starts with 6.12" m3 uname_reports_linux_6_12
 check AC-3.6 "reboot -f exits 0 within 10 s, terminal restored" m3 reboot_exits_zero_and_restores_terminal
 check AC-3.7 "cargo test --test m3_linux_boot -- --ignored" cargo test --test m3_linux_boot -- --ignored
 check AC-3.8 "M1 and M2 tests still pass" cargo test --test m1_real_mode --test m2_long_mode
+
+echo "== Phase 1 done =="
+check AC-P2 "notes/phase-1.md: milestones, VM-exit flow, >= 10 answered questions" notes_complete
 
 if [ "$failed" -eq 0 ]; then echo "RESULT: PASS"; else echo "RESULT: FAIL"; fi
 exit "$failed"
