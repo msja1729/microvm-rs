@@ -46,6 +46,7 @@ enum Command {
 #[derive(Clone, Copy, ValueEnum)]
 enum Mode {
     Real,
+    Long,
 }
 
 fn main() -> ExitCode {
@@ -64,10 +65,11 @@ fn main() -> ExitCode {
                 image,
                 mode: match mode {
                     Mode::Real => RawMode::Real,
+                    Mode::Long => RawMode::Long,
                 },
                 mem_mib,
             };
-            run_raw(&config, std::io::stdout())
+            run_raw(&config, std::io::stdout()).map(|_| ())
         }
     };
 

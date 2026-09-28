@@ -43,3 +43,28 @@ Choices made inside the spec during implementation. Format: question → options
 - **Options:** a `wait-timeout` style crate (not allowed); poll `try_wait` with a reader thread.
 - **Chose:** poll `try_wait` every 20 ms for up to 10 s, then kill and fail; stdout is drained on a separate thread so a full pipe can't deadlock the child.
 - **Why:** only `rexpect` and `tempfile` are allowed dev-crates.
+
+## M2 — Long-mode hello
+
+### D9. When to set CPUID
+- **Options:** only for `boot` (pitfall 3); for long mode too; for every vCPU.
+- **Chose:** every vCPU gets `KVM_GET_SUPPORTED_CPUID` → `KVM_SET_CPUID2` right after creation.
+- **Why:** KVM rejects `EFER.LME` unless the guest's CPUID advertises long mode, so M2 already needs it. It is harmless for real mode, and one code path is simpler than three.
+
+### D10. Entering long mode
+- **Options:** start in real mode and let a guest trampoline switch modes; set the final long-mode state directly with `KVM_SET_SREGS`.
+- **Chose:** set it directly (CR0.PE|PG, CR4.PAE, EFER.LME|LMA, CR3, 64-bit CS) — the spec says "the VMM puts the vCPU into long mode".
+- **Why:** it is what M3's 64-bit boot entry needs too, and it keeps guest code trivial.
+
+### D11. Where GDT encoding is tested
+- **Options:** only indirectly via the M2 integration test; unit tests too.
+- **Chose:** two `#[cfg(test)]` unit tests inside `src/arch/x86_64/gdt.rs` (flat 64-bit code segment; base/limit round-trip).
+- **Why:** a wrong bit gives an opaque triple fault; a unit test pinpoints it. It adds no file to the output list.
+
+### D12. Shared test helpers
+- **Options:** `tests/common/mod.rs`; duplicate the small `guest_image` / `run_vmm` helpers.
+- **Chose:** duplicate them in `tests/m1_real_mode.rs` and `tests/m2_long_mode.rs`.
+- **Why:** `tests/common/` is not in the spec's output-file list, and the helpers are ~40 lines.
+
+### D13. How AC-2.3 reads the registers
+- **Chose:** the in-process test calls `kvm_hello::run_raw`, which returns `RawOutcome { sregs }` after `HLT`, with serial output going to a test-owned `Arc<Mutex<Vec<u8>>>` writer. (Resolution of Q4.)
