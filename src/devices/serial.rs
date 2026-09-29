@@ -77,7 +77,7 @@ fn register(offset: u16, i: usize) -> Option<u8> {
     }
 }
 
-impl<T: Trigger, W: Write> PioDevice for SerialDevice<T, W> {
+impl<T: Trigger + Send, W: Write + Send> PioDevice for SerialDevice<T, W> {
     fn read(&mut self, offset: u16, data: &mut [u8]) -> Result<()> {
         for (i, byte) in data.iter_mut().enumerate() {
             *byte = match register(offset, i) {
@@ -103,7 +103,7 @@ impl<T: Trigger, W: Write> PioDevice for SerialDevice<T, W> {
 /// A serial device shared between the vCPU thread (guest port I/O) and the stdin thread.
 pub struct SharedSerial<T: Trigger, W: Write>(pub Arc<Mutex<SerialDevice<T, W>>>);
 
-impl<T: Trigger, W: Write> PioDevice for SharedSerial<T, W> {
+impl<T: Trigger + Send, W: Write + Send> PioDevice for SharedSerial<T, W> {
     fn read(&mut self, offset: u16, data: &mut [u8]) -> Result<()> {
         self.0
             .lock()

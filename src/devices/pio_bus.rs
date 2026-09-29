@@ -14,8 +14,9 @@ pub enum PioAction {
     Reset,
 }
 
-/// A device that owns a contiguous range of I/O ports.
-pub trait PioDevice {
+/// A device that owns a contiguous range of I/O ports. `Send`: in `boot` mode the bus
+/// lives behind a mutex shared by the vCPU threads.
+pub trait PioDevice: Send {
     /// Handle an `IN` at `offset` bytes into the device's range; fill all of `data`.
     fn read(&mut self, offset: u16, data: &mut [u8]) -> Result<()>;
     /// Handle an `OUT` at `offset` bytes into the device's range.

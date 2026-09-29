@@ -93,3 +93,40 @@ Choices made inside the spec. Format: question → options → choice → why. D
 - **Options:** M4 (with the event loop); M6 (with SMP).
 - **Chose:** M4.
 - **Why:** M4 needs the event loop on some thread, and the vCPU can't share one with it because `KVM_RUN` blocks. Doing it once in M4 means M6 only generalizes from 1 to N vCPUs.
+
+## M4 — virtio-blk
+
+### D19. How the MMIO bus holds devices
+- **Options:** `Arc<Mutex<dyn MmioDevice>>` entries (as sketched in the plan); `Arc<dyn MmioDevice>` with `&self` methods, each device doing its own locking.
+- **Chose:** `Arc<dyn MmioDevice>` with `&self` methods. The virtio entry (`MmioTransport`) serves `InterruptStatus`/`InterruptACK` straight from the atomic and locks the transport only for other registers.
+- **Why:** with a bus-level mutex, every register access, including interrupt status, would wait while the event loop holds the transport lock during disk I/O. That would defeat the plan's "`InterruptStatus` outside the lock" design.
+
+### D20. When disk arguments are validated
+- **Options:** while attaching the device (after the kernel is loaded); first thing in `run_boot`.
+- **Chose:** first thing in `run_boot`, before `/dev/kvm` is opened. The final command-line length is checked there too.
+- **Why:** AC-4.8's exit codes and messages then don't depend on the kernel or KVM, which is what the plan's "no kernel needed" test needs, and a bad argument fails fast.
+
+### D21. `unwrap`/`expect` in unit tests
+- **Options:** `clippy.toml` `allow-*-in-tests`; `#![cfg_attr(test, allow(...))]` in `lib.rs`; `Result`-returning tests.
+- **Chose:** `#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]` in `lib.rs`.
+- **Why:** Phase 1 had no in-crate unit tests, so the crate-wide deny never met test code. This keeps the deny for all non-test code without adding a file outside the spec's output list.
+
+### D22. Transport rules the plan left open
+- **Options:** accept driver writes at any time; freeze state once the driver commits to it.
+- **Chose:** `DriverFeatures` is ignored after `FEATURES_OK`. All queue registers, including `QueueReady`, are ignored while the device is active (after an accepted `DRIVER_OK`, until reset). `NEEDS_RESET` stays set until `Status = 0`. On a corrupt ring the transport raises both the used-buffer and the config-change bits.
+- **Why:** after activation the event loop relies on the queue layout validated at `DRIVER_OK`. Linux resets the device before tearing queues down, so it never needs to change them while active. Raising the used-buffer bit too means buffers completed before the corruption was found still get their interrupt.
+
+### D23. virtio-blk request layout and `FLUSH` data
+- **Options:** accept any layout (header or status sharing a descriptor with data); fixed layout: header descriptor, data descriptors, status descriptor.
+- **Chose:** the plan's fixed layout. A `FLUSH` with data descriptors is rejected (`IOERR`), and so is an `IN`/`OUT` whose data length is not a multiple of 512 (`IOERR`). A zero-length `IN`/`OUT` is accepted as a no-op.
+- **Why:** Linux's virtio_blk always uses separate header/data/status descriptors, and the fixed layout keeps the parser small enough to prove in M8. Documented as a limitation.
+
+### D24. AC-4.8 test is not `#[ignore]`d
+- **Options:** ignore it like the boot tests; always run it.
+- **Chose:** always run it (`cargo test` covers it).
+- **Why:** it needs no artifacts; disk validation happens before the kernel is read.
+
+### D25. The vCPU thread's exit reporting
+- **Options:** report only on normal returns; also report from a drop guard.
+- **Chose:** a drop guard records "vCPU thread ended unexpectedly" if the thread ends without an outcome (e.g. a panic). `VmExit::finish` is first-writer-wins, so the guard is harmless on normal paths. `vcpu::run` gains `GuestStop::Stopped` for "the VMM asked me to stop".
+- **Why:** otherwise a panicking vCPU thread would never wake the event loop, and the VMM would hang.

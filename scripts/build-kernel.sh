@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Download the pinned Linux 6.12 LTS release, verify it, configure it with
-# x86_64_defconfig + kvm_guest.config, and build artifacts/bzImage.
-# Idempotent: does nothing if artifacts/bzImage was already built from this version.
+# x86_64_defconfig + kvm_guest.config + configs/phase2.config, and build
+# artifacts/bzImage (plus artifacts/kernel.config, the .config it was built from).
+# Idempotent: does nothing if artifacts/bzImage was already built from this version
+# and this exact config fragment (the stamp records both).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -13,6 +15,7 @@ BUILD_DIR=artifacts/build
 TARBALL="$BUILD_DIR/linux-${VERSION}.tar.xz"
 SRC="$BUILD_DIR/linux-${VERSION}"
 STAMP=artifacts/bzImage.version
+FRAGMENT=configs/phase2.config
 
 missing=()
 for cmd in curl sha256sum tar xz make gcc flex bison bc; do
@@ -27,8 +30,11 @@ if [ "${#missing[@]}" -gt 0 ]; then
     exit 1
 fi
 
-if [ -f artifacts/bzImage ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$VERSION" ]; then
-    echo "artifacts/bzImage is already Linux $VERSION"
+FRAGMENT_SHA=$(sha256sum "$FRAGMENT" | cut -d' ' -f1)
+WANT_STAMP="$VERSION $FRAGMENT_SHA"
+if [ -f artifacts/bzImage ] && [ -f artifacts/kernel.config ] \
+    && [ "$(cat "$STAMP" 2>/dev/null)" = "$WANT_STAMP" ]; then
+    echo "artifacts/bzImage is already Linux $VERSION with $FRAGMENT ($FRAGMENT_SHA)"
     exit 0
 fi
 
@@ -45,8 +51,18 @@ fi
 
 make -C "$SRC" x86_64_defconfig
 make -C "$SRC" kvm_guest.config
+# -m: merge the fragment into .config only; olddefconfig then resolves dependencies.
+(cd "$SRC" && ./scripts/kconfig/merge_config.sh -m .config "$OLDPWD/$FRAGMENT")
+make -C "$SRC" olddefconfig
+# A fragment line Kconfig dropped (e.g. an unmet dependency) would silently build
+# a kernel without the feature; fail instead.
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    grep -qxF "$line" "$SRC/.config" || { echo "$FRAGMENT: '$line' missing from .config" >&2; exit 1; }
+done < "$FRAGMENT"
 make -C "$SRC" -j"$(nproc)" bzImage
 
 cp "$SRC/arch/x86/boot/bzImage" artifacts/bzImage
-echo "$VERSION" > "$STAMP"
-echo "built artifacts/bzImage (Linux $VERSION)"
+cp "$SRC/.config" artifacts/kernel.config
+echo "$WANT_STAMP" > "$STAMP"
+echo "built artifacts/bzImage (Linux $VERSION, $FRAGMENT $FRAGMENT_SHA)"

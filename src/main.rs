@@ -52,9 +52,16 @@ enum Command {
         /// Guest RAM in MiB.
         #[arg(long, default_value_t = 512, value_parser = clap::value_parser!(u64).range(128..=3072))]
         mem_mib: u64,
-        /// Kernel command line.
+        /// Kernel command line. The VMM appends `virtio_mmio.device=` entries for
+        /// the devices it attaches.
         #[arg(long, default_value = DEFAULT_CMDLINE)]
         cmdline: String,
+        /// Disk image for the virtio-blk device (/dev/vda in the guest).
+        #[arg(long)]
+        disk: Option<PathBuf>,
+        /// Attach the disk read-only.
+        #[arg(long, requires = "disk")]
+        disk_ro: bool,
     },
 }
 
@@ -91,12 +98,16 @@ fn main() -> ExitCode {
             initrd,
             mem_mib,
             cmdline,
+            disk,
+            disk_ro,
         } => run_boot(&BootConfig {
             kvm_device: cli.kvm_device,
             kernel,
             initrd,
             mem_mib,
             cmdline,
+            disk,
+            disk_ro,
         }),
     };
 

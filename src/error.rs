@@ -46,6 +46,8 @@ pub enum Error {
     InitrdTooLarge { path: PathBuf, size: u64 },
     #[error("invalid kernel command line: {0}")]
     Cmdline(String),
+    #[error("cannot use disk image {}: {reason}", path.display())]
+    Disk { path: PathBuf, reason: String },
 
     // ---- Unexpected VM exits and internal errors (exit code 1) ----
     #[error("KVM ioctl {op} failed: {source}")]
@@ -69,6 +71,8 @@ pub enum Error {
     UnexpectedExit(String),
     #[error("guest shut down unexpectedly (KVM_EXIT_SHUTDOWN, e.g. a triple fault)")]
     GuestShutdown,
+    #[error("event loop error: {0}")]
+    EventLoop(String),
 }
 
 impl Error {
@@ -86,7 +90,8 @@ impl Error {
             | Error::KernelLoad { .. }
             | Error::InitrdRead { .. }
             | Error::InitrdTooLarge { .. }
-            | Error::Cmdline(_) => 2,
+            | Error::Cmdline(_)
+            | Error::Disk { .. } => 2,
             Error::Kvm { .. }
             | Error::GuestMemory(_)
             | Error::SerialOutput(_)
@@ -95,7 +100,8 @@ impl Error {
             | Error::Thread(_)
             | Error::Terminal(_)
             | Error::UnexpectedExit(_)
-            | Error::GuestShutdown => 1,
+            | Error::GuestShutdown
+            | Error::EventLoop(_) => 1,
         }
     }
 }

@@ -1,14 +1,20 @@
-//! VM creation: open the KVM device, check capabilities, create the VM and its guest memory.
+//! VM creation: open the KVM device, check capabilities, create the VM and its guest
+//! memory; attach virtio-mmio devices.
 
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use kvm_bindings::{kvm_pit_config, kvm_userspace_memory_region};
-use kvm_ioctls::{Cap, Kvm, VmFd};
+use kvm_ioctls::{Cap, IoEventAddress, Kvm, VmFd};
 use vm_memory::{GuestAddress, GuestMemoryBackend, GuestMemoryMmap};
+use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
-use crate::arch::x86_64::KVM_TSS_ADDRESS;
+use crate::arch::x86_64::{KVM_TSS_ADDRESS, MMIO_WINDOW_SIZE};
+use crate::devices::mmio_bus::MmioBus;
+use crate::devices::virtio::mmio::{MmioTransport, SharedTransport, VirtioMmio, NOTIFY_OFFSET};
+use crate::devices::virtio::{GuestRam, Interrupt, VirtioDevice};
 use crate::error::{Error, Result};
 
 /// The only KVM API version that has ever been stable.
@@ -117,5 +123,64 @@ impl Vm {
                 op: "KVM_CREATE_PIT2",
                 source,
             })
+    }
+
+    /// Attach a virtio-mmio device in the window at `base`, interrupting on `gsi`:
+    /// - an irqfd on `gsi` (edge: each eventfd write is one pulse);
+    /// - one ioeventfd per queue on `QueueNotify`, matching the queue index, so a
+    ///   notification never exits to user space;
+    /// - the transport on `mmio` for every other register access.
+    ///
+    /// Returns the shared transport and the queue eventfds (index = queue), which the
+    /// event loop watches. Must run before any vCPU starts.
+    pub fn attach_virtio<D: VirtioDevice + 'static>(
+        &self,
+        mmio: &mut MmioBus,
+        base: u64,
+        gsi: u32,
+        device: D,
+        mem: GuestRam,
+    ) -> Result<(SharedTransport<D>, Vec<EventFd>)> {
+        let eventfd = || {
+            EventFd::new(EFD_NONBLOCK).map_err(|e| Error::Kvm {
+                op: "eventfd",
+                source: e.into(),
+            })
+        };
+        let irqfd = eventfd()?;
+        // KVM_IRQFD: a write to `irqfd` raises GSI `gsi` in the in-kernel irqchip
+        // (PIC and IOAPIC, through KVM's default routing for GSIs 0-15).
+        self.fd
+            .register_irqfd(&irqfd, gsi)
+            .map_err(|source| Error::Kvm {
+                op: "KVM_IRQFD",
+                source,
+            })?;
+
+        let mut queue_evts = Vec::with_capacity(device.num_queues());
+        for index in 0..device.num_queues() {
+            let evt = eventfd()?;
+            let queue =
+                u32::try_from(index).map_err(|_| Error::UnexpectedExit("queue index".into()))?;
+            // KVM_IOEVENTFD: a 4-byte guest write of `queue` to QueueNotify signals
+            // `evt` inside KVM instead of exiting to user space. A u32 datamatch makes
+            // the registration 4 bytes long with data matching enabled.
+            self.fd
+                .register_ioevent(&evt, &IoEventAddress::Mmio(base + NOTIFY_OFFSET), queue)
+                .map_err(|source| Error::Kvm {
+                    op: "KVM_IOEVENTFD",
+                    source,
+                })?;
+            queue_evts.push(evt);
+        }
+
+        let interrupt = Arc::new(Interrupt::new(irqfd));
+        let transport = Arc::new(Mutex::new(VirtioMmio::new(device, mem, interrupt.clone())));
+        mmio.insert(
+            base,
+            MMIO_WINDOW_SIZE,
+            Arc::new(MmioTransport::new(transport.clone(), interrupt)),
+        );
+        Ok((transport, queue_evts))
     }
 }

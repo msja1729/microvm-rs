@@ -202,6 +202,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "event-manager"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13bdac971eb2efaceffca0976058ab80c715945cc565c8a4aa1ed3bb0dc8d0e4"
+dependencies = [
+ "libc",
+ "vmm-sys-util",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -282,13 +292,16 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "env_logger",
+ "event-manager",
  "kvm-bindings",
  "kvm-ioctls",
  "libc",
  "linux-loader",
  "log",
  "rexpect",
+ "tempfile",
  "thiserror",
+ "virtio-bindings",
  "vm-memory",
  "vm-superio",
  "vmm-sys-util",
@@ -549,6 +562,12 @@ name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
+
+[[package]]
+name = "virtio-bindings"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "091f1f09cfbf2a78563b562e7a949465cce1aef63b6065645188d995162f8868"
 
 [[package]]
 name = "vm-memory"
