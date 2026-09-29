@@ -1,12 +1,12 @@
 # Project: minimal KVM-based VMM (Firecracker-like), Rust
 
 ## Specs
-- Read SPEC.md (project overview) and specs/phase-1/SPEC.md (active phase) before any task.
-- Only Phase 1 is active. Do not plan or build anything from Phase 2 or 3.
+- Read SPEC.md (project overview) and specs/phase-2/SPEC.md (active phase) before any task.
+- Only Phase 2 is active. Do not plan or build anything from Phase 3.
 - Never modify a SPEC.md without asking me first.
 
 ## How to work with me
-- Implement one milestone at a time (M1, M2, M3). Never start the next milestone without my approval.
+- Implement one milestone at a time (M4–M8). Never start the next milestone without my approval.
 - Keep diffs small and scoped to the current milestone. No unrelated refactors.
 - Add clear comments on every unsafe block and ioctl: what it does and why.
 - If a test fails because the spec is unclear, stop and propose a spec change instead of patching around it.
@@ -24,6 +24,6 @@
 ## Decisions
 - When a choice is within the current milestone and the spec, pick your recommended option yourself
   and continue. Don't ask me.
-- Log every such choice in specs/phase-1/DECISIONS.md: the question, options, what you chose, and why.
+- Log every such choice in specs/phase-2/DECISIONS.md: the question, options, what you chose, and why.
 - Still stop and ask me before: changing any SPEC.md, starting the next milestone, adding a crate
   not listed in the spec, or anything needing sudo.

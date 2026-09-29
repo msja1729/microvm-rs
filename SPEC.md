@@ -11,8 +11,8 @@ Build a minimal, Firecracker-like virtual machine monitor (VMM) in Rust on top o
 
 | Phase | Name | Outcome | Status |
 |---|---|---|---|
-| 1 | Boot a guest | VMM boots an unmodified Linux kernel to a BusyBox shell over an emulated serial console | **ACTIVE** — see `specs/phase-1/SPEC.md` |
-| 2 | Real VMM | virtio-mmio block + net devices, multiple vCPUs, seccomp/jailer-style hardening, fuzzed/verified device parsing | Not yet specified |
+| 1 | Boot a guest | VMM boots an unmodified Linux kernel to a BusyBox shell over an emulated serial console | **COMPLETE** (tag `phase-1-complete`) — see `specs/phase-1/SPEC.md` |
+| 2 | Real VMM | virtio-mmio block + net devices, multiple vCPUs, seccomp/jailer-style hardening, fuzzed/verified device parsing | **ACTIVE** — see `specs/phase-2/SPEC.md` |
 | 3 | Confidential computing | Guest memory encryption (AMD SEV-SNP or Intel TDX) and attestation | Not yet specified; requires special hardware |
 
 Phase 2 and 3 specs are written **only after** the previous phase passes its verification script. Their details depend on what earlier phases reveal.
