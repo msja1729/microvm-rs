@@ -1,6 +1,6 @@
 # Phase 1 SPEC — Boot a guest
 
-**Status:** ACTIVE
+**Status:** COMPLETE (tag `phase-1-complete`)
 **Depends on:** nothing (first phase)
 **Verified by:** `scripts/verify-phase-1.sh` (all milestones green)
 
