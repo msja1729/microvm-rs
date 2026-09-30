@@ -2,6 +2,7 @@
 
 pub mod boot_params;
 pub mod gdt;
+pub mod mptable;
 pub mod paging;
 pub mod regs;
 
@@ -39,6 +40,12 @@ pub const BLK_IRQ: u32 = 5;
 /// virtio-net slot: MMIO window and GSI.
 pub const NET_MMIO_BASE: u64 = MMIO_BASE + MMIO_WINDOW_SIZE;
 pub const NET_IRQ: u32 = 6;
+/// Guest-physical address of the MP table: the last KiB of base memory (the EBDA),
+/// which Linux scans for the MP floating pointer and e820 reports as reserved.
+pub const MPTABLE_START: u64 = 0x9_fc00;
+/// Most vCPUs a guest may have (the MP table and CPUID topology are built for this).
+pub const MAX_VCPUS: u8 = 4;
+
 /// Guest-physical address of the in-kernel IOAPIC; MMIO windows must stay below it.
 pub const IOAPIC_ADDRESS: u64 = 0xfec0_0000;
 

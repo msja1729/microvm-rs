@@ -44,6 +44,8 @@ pub enum Error {
     },
     #[error("initrd {} ({size} bytes) does not fit in guest memory above the kernel", path.display())]
     InitrdTooLarge { path: PathBuf, size: u64 },
+    #[error("--vcpus {0} is out of range (1..=4)")]
+    InvalidVcpus(u8),
     #[error("invalid kernel command line: {0}")]
     Cmdline(String),
     #[error("cannot use disk image {}: {reason}", path.display())]
@@ -93,6 +95,7 @@ impl Error {
             | Error::InitrdRead { .. }
             | Error::InitrdTooLarge { .. }
             | Error::Cmdline(_)
+            | Error::InvalidVcpus(_)
             | Error::Disk { .. }
             | Error::Tap { .. } => 2,
             Error::Kvm { .. }

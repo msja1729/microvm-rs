@@ -162,3 +162,25 @@ Choices made inside the spec. Format: question → options → choice → why. D
 - **Options:** delete and recreate it; fail with a message.
 - **Chose:** fail and print the `ip link delete` command.
 - **Why:** a script run with sudo should not silently delete an interface someone else created.
+
+## M6 — Multiple vCPUs
+
+### D32. CPUID details the plan left open
+- **Options:** only set `HTT` when N > 1; also clear it when N = 1. Add missing 0xB/0x1F subleaves; rewrite only the ones KVM reports.
+- **Chose:** `HTT` is cleared for N = 1 (a host with HT would otherwise advertise it). A leaf-4 cache counts as shared when its level is ≥ 3. Only the 0xB/0x1F subleaves KVM reports are rewritten; none are added. Raw mode also goes through the topology rewrite, as "vCPU 0 of 1".
+- **Why:** the guest sees one consistent "1 socket × N cores" topology for every N, and there is only one CPUID code path.
+
+### D33. Where the vCPU-count check lives
+- **Options:** clap only; clap plus a library check.
+- **Chose:** clap's `range(1..=4)` (exit 2 on bad input), plus `Error::InvalidVcpus` (exit 2) at the top of `run_boot`.
+- **Why:** `run_boot` is a public library function; the MP table and topology are only built for 1..=4 CPUs.
+
+### D34. A vCPU thread fails to start after others are running
+- **Options:** return the error at once (leaving running threads unjoined); record it as the VM outcome and go through the normal stop/join path.
+- **Chose:** record it with `VmExit::finish`; the event loop returns at once and `stop_all` stops and joins the threads already started.
+- **Why:** no vCPU thread is ever left running.
+
+### D35. The 30 s boot bound
+- **Options:** leave it unchecked (it is a performance bound, not an AC); check it where the spec's configuration is booted.
+- **Chose:** AC-6.4 asserts that each of its 10 boots (disk + TAP + 4 vCPUs) reaches `PHASE1-INIT-OK` within 30 s. Measured: about 4 s each.
+- **Why:** AC-6.4 boots exactly the configuration the bound describes, so checking there costs nothing.

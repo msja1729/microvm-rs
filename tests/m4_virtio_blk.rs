@@ -1,6 +1,7 @@
 //! M4 acceptance: virtio-blk (AC-4.3 – AC-4.8), driven through a pseudo-terminal with
 //! rexpect. Every test works on a temporary copy of `artifacts/disk.ext4`.
 //!
+//! Set `VMM_TEST_VCPUS=<n>` to boot with `--vcpus <n>`.
 //! `ac_4_8` needs no artifacts and always runs. Tests that boot need `artifacts/bzImage`, `artifacts/initramfs.cpio` and
 //! `artifacts/disk.ext4`, so they are `#[ignore]`d; run with
 //! `cargo test --test m4_virtio_blk -- --ignored`.
@@ -36,6 +37,15 @@ fn s(path: &Path) -> &str {
     path.to_str().expect("path is UTF-8")
 }
 
+/// `--vcpus $VMM_TEST_VCPUS` when the variable is set, so the verify script can rerun
+/// these tests with 4 vCPUs (AC-6.6, AC-7.3).
+fn vcpu_args() -> Vec<String> {
+    match std::env::var("VMM_TEST_VCPUS") {
+        Ok(n) => vec!["--vcpus".into(), n],
+        Err(_) => Vec::new(),
+    }
+}
+
 /// A private copy of the disk image, deleted with the returned directory.
 fn disk_copy() -> (TempDir, PathBuf) {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -60,6 +70,7 @@ fn boot(extra: &[&str]) -> PtySession {
         "--initrd",
         s(&initrd),
     ]);
+    command.args(vcpu_args());
     command.args(extra);
     let mut session =
         spawn_command(command, Some(TIMEOUT.as_millis() as u64)).expect("failed to spawn");

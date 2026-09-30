@@ -57,6 +57,9 @@ enum Command {
         /// the devices it attaches.
         #[arg(long, default_value = DEFAULT_CMDLINE)]
         cmdline: String,
+        /// Number of vCPUs.
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=4))]
+        vcpus: u8,
         /// Disk image for the virtio-blk device (/dev/vda in the guest).
         #[arg(long)]
         disk: Option<PathBuf>,
@@ -105,6 +108,7 @@ fn main() -> ExitCode {
             initrd,
             mem_mib,
             cmdline,
+            vcpus,
             disk,
             disk_ro,
             tap,
@@ -115,6 +119,7 @@ fn main() -> ExitCode {
             initrd,
             mem_mib,
             cmdline,
+            vcpus,
             disk,
             disk_ro,
             tap,

@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex};
 pub use error::{Error, Result};
 
 use arch::x86_64::{
-    boot_params, regs, BLK_IRQ, BLK_MMIO_BASE, BOOT_PARAMS_START, CMDLINE_MAX_SIZE, CMDLINE_START,
-    MMIO_WINDOW_SIZE, NET_IRQ, NET_MMIO_BASE,
+    boot_params, mptable, regs, BLK_IRQ, BLK_MMIO_BASE, BOOT_PARAMS_START, CMDLINE_MAX_SIZE,
+    CMDLINE_START, MAX_VCPUS, MMIO_WINDOW_SIZE, NET_IRQ, NET_MMIO_BASE,
 };
 use devices::i8042::{I8042, I8042_BASE, I8042_LEN};
 use devices::mmio_bus::MmioBus;
@@ -83,7 +83,7 @@ pub fn run_raw<W: Write + Send + 'static>(config: &RawConfig, out: W) -> Result<
         op: "KVM_CREATE_VCPU",
         source,
     })?;
-    regs::setup_cpuid(&vm.kvm, &vcpu)?;
+    regs::setup_cpuid(&regs::supported_cpuid(&vm.kvm)?, &vcpu, 0, 1)?;
     match config.mode {
         RawMode::Real => regs::setup_real_mode(&vcpu, entry)?,
         RawMode::Long => regs::setup_long_mode(&vcpu, &vm.memory, entry, 0)?,
@@ -125,6 +125,8 @@ pub struct BootConfig {
     pub initrd: Option<PathBuf>,
     pub mem_mib: u64,
     pub cmdline: String,
+    /// Number of vCPUs, `1..=MAX_VCPUS`.
+    pub vcpus: u8,
     /// Backing file for the virtio-blk device, if any.
     pub disk: Option<PathBuf>,
     /// Open the disk read-only and advertise `VIRTIO_BLK_F_RO`.
@@ -205,11 +207,15 @@ fn final_cmdline(user: &str, has_disk: bool, has_net: bool) -> Result<String> {
 /// Boot a Linux bzImage with an interactive serial console on stdin/stdout.
 /// Returns `Ok` when the guest resets or shuts down.
 ///
-/// Threads: the vCPU runs on its own thread (`vcpu0`); this thread runs the event loop
-/// (virtio queue notifications, VM exit) and, when the VM ends, stops and joins the vCPU.
+/// Threads: each vCPU runs on its own thread (`vcpu0`..); this thread runs the event
+/// loop (virtio queue notifications, VM exit) and, when the VM ends, stops and joins
+/// every vCPU.
 pub fn run_boot(config: &BootConfig) -> Result<()> {
     // Host-side inputs are checked before anything else, so their errors (exit 2) don't
     // depend on the kernel or KVM.
+    if !(1..=MAX_VCPUS).contains(&config.vcpus) {
+        return Err(Error::InvalidVcpus(config.vcpus));
+    }
     let disk = match &config.disk {
         Some(path) => Some(open_disk(path, config.disk_ro)?),
         None => None,
@@ -221,7 +227,7 @@ pub fn run_boot(config: &BootConfig) -> Result<()> {
     let cmdline_str = final_cmdline(&config.cmdline, disk.is_some(), tap.is_some())?;
 
     let vm = vm::create(&config.kvm_device, config.mem_mib, BOOT_MIN_MEM_MIB)?;
-    // The irqchip must exist before the vCPU is created.
+    // The irqchip must exist before the vCPUs are created.
     vm.setup_irqchip()?;
     let mem_size = config.mem_mib << 20;
 
@@ -245,13 +251,32 @@ pub fn run_boot(config: &BootConfig) -> Result<()> {
     let params = boot_params::build(kernel.header, CMDLINE_START, initrd, mem_size)?;
     boot_params::write(&vm.memory, &params)?;
 
-    // KVM_CREATE_VCPU: the single vCPU, id 0; it gets an in-kernel LAPIC.
-    let vcpu = vm.fd.create_vcpu(0).map_err(|source| Error::Kvm {
-        op: "KVM_CREATE_VCPU",
-        source,
-    })?;
-    regs::setup_cpuid(&vm.kvm, &vcpu)?;
-    regs::setup_long_mode(&vcpu, &vm.memory, kernel.entry, BOOT_PARAMS_START)?;
+    let supported_cpuid = regs::supported_cpuid(&vm.kvm)?;
+    // Written in every boot, even with one vCPU, so the guest always routes IRQs
+    // through the IOAPIC.
+    let (signature, features) = regs::cpu_signature(&supported_cpuid);
+    mptable::write(&vm.memory, config.vcpus, signature, features)?;
+
+    let mut vcpus = Vec::with_capacity(usize::from(config.vcpus));
+    for index in 0..config.vcpus {
+        // KVM_CREATE_VCPU: vCPU `index` (its LAPIC ID is the same number), with an
+        // in-kernel LAPIC because the irqchip already exists.
+        let vcpu = vm
+            .fd
+            .create_vcpu(u64::from(index))
+            .map_err(|source| Error::Kvm {
+                op: "KVM_CREATE_VCPU",
+                source,
+            })?;
+        regs::setup_cpuid(&supported_cpuid, &vcpu, index, config.vcpus)?;
+        regs::setup_lapic(&vcpu)?;
+        // Only the bootstrap processor gets boot registers. The others stay in KVM's
+        // initial wait-for-SIPI state until the guest starts them with INIT/SIPI.
+        if index == 0 {
+            regs::setup_long_mode(&vcpu, &vm.memory, kernel.entry, BOOT_PARAMS_START)?;
+        }
+        vcpus.push(vcpu);
+    }
 
     let irq_evt = EventFd::new(EFD_NONBLOCK).map_err(|e| Error::Kvm {
         op: "eventfd",
@@ -314,7 +339,17 @@ pub fn run_boot(config: &BootConfig) -> Result<()> {
         stop: Arc::new(AtomicBool::new(false)),
         exit: exit.clone(),
     };
-    let handles = vec![vcpu::spawn(0, vcpu, shared.clone())?];
+    let mut handles = Vec::with_capacity(vcpus.len());
+    for (index, vcpu) in vcpus.into_iter().enumerate() {
+        match vcpu::spawn(index, vcpu, shared.clone()) {
+            Ok(handle) => handles.push(handle),
+            Err(e) => {
+                // Stop the vCPUs already running before reporting the error.
+                exit.finish(Err(e));
+                break;
+            }
+        }
+    }
 
     event_loop::run(&mut events, &exit);
     vcpu::stop_all(handles, &shared.stop)?;

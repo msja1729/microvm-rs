@@ -104,6 +104,12 @@ tap_check() {
     fi
 }
 
+# Every test in the M4 and M5 binaries, rerun with the given vCPU count.
+m4_m5_with_vcpus() {
+    VMM_TEST_VCPUS=$1 cargo test --test m4_virtio_blk --test m5_virtio_net \
+        -- --include-ignored --test-threads=1
+}
+
 # Ignored tests boot VMs (and, from M5, share one TAP), so they never run concurrently.
 itest() { cargo test --test "$1" -- --include-ignored --exact "$2" --test-threads=1; }
 
@@ -145,6 +151,15 @@ tap_check AC-5.3 "guest pings 172.16.0.1 with 0% loss" m5 ac_5_3_guest_pings_hos
 tap_check AC-5.4 "host pings 172.16.0.2 with 0% loss" m5 ac_5_4_host_pings_guest
 tap_check AC-5.5 "16 MiB HTTP download: guest and host sha256 match" m5 ac_5_5_bulk_download_matches_host_checksum
 check AC-5.6 "bad --tap / --guest-mac arguments -> exit 2" m5 ac_5_6_bad_net_arguments_exit_2
+
+echo "== M6 — Multiple vCPUs =="
+m6() { itest m6_smp "$1"; }
+check AC-6.1 "--vcpus 0 and --vcpus 5 -> exit 2" m6 ac_6_1_vcpu_count_out_of_range_exit_2
+check AC-6.2 "--vcpus 4: nproc and /proc/cpuinfo show 4" m6 ac_6_2_guest_sees_four_cpus
+check AC-6.3 "--vcpus 4: LOC interrupts on all 4 CPUs" m6 ac_6_3_every_cpu_takes_timer_interrupts
+tap_check AC-6.4 "10 boots with 4 vCPUs + disk + TAP (each <= 30 s, exit 0)" m6 ac_6_4_ten_boots_with_disk_net_and_four_vcpus
+check AC-6.5 "--vcpus 4: reboot -f exits 0 within 10 s" m6 ac_6_5_reboot_with_four_vcpus_exits_within_10s
+tap_check AC-6.6 "all M4 and M5 tests pass with 4 vCPUs" m4_m5_with_vcpus 4
 
 if [ "$failed" -eq 0 ]; then echo "RESULT: PASS"; else echo "RESULT: FAIL"; fi
 exit "$failed"
