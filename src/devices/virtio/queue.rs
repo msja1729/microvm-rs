@@ -135,14 +135,13 @@ pub fn walk_chain<M: GuestMem + ?Sized>(
     size: u16,
     head: u16,
 ) -> Result<Vec<ChainDesc>, ChainError> {
-    let mut chain = Vec::new();
+    let mut chain = Vec::with_capacity(usize::from(size));
     let mut index = head;
+    // Each iteration adds one descriptor, and the chain is rejected once it holds
+    // `size` descriptors and still has a `next`, so the body runs at most `size` times.
     loop {
         if index >= size {
             return Err(ChainError::BadIndex);
-        }
-        if chain.len() >= usize::from(size) {
-            return Err(ChainError::TooLong);
         }
         let addr = u64::from(index)
             .checked_mul(DESC_SIZE)
@@ -163,6 +162,10 @@ pub fn walk_chain<M: GuestMem + ?Sized>(
         });
         if flags & VRING_DESC_F_NEXT == 0 {
             return Ok(chain);
+        }
+        // `size` descriptors and another one wanted: some index repeats (a loop).
+        if chain.len() >= usize::from(size) {
+            return Err(ChainError::TooLong);
         }
         index = u16::from_le_bytes([n0, n1]);
     }
@@ -205,6 +208,18 @@ impl Queue {
             && range_in_memory(mem_size, self.desc_table, desc_bytes)
             && range_in_memory(mem_size, self.avail_ring, avail_bytes)
             && range_in_memory(mem_size, self.used_ring, used_bytes)
+    }
+
+    /// Proof harnesses start the queue at arbitrary ring positions.
+    #[cfg(kani)]
+    pub fn set_positions(&mut self, next_avail: u16, next_used: u16) {
+        self.next_avail = next_avail;
+        self.next_used = next_used;
+    }
+
+    /// Position of the next available-ring slot the device will consume.
+    pub fn next_avail(&self) -> u16 {
+        self.next_avail
     }
 
     /// `true` if the driver has published a chain the device hasn't taken yet. Consumes

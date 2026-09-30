@@ -182,6 +182,139 @@ allowlists_in_notes() {
     return $ok
 }
 
+# AC-8.1: the guest-facing parsers live in queue.rs/parse.rs over the crate's own
+# GuestMem trait, with no KVM (or vm-memory) dependency.
+pure_parsers() {
+    local ok=0 f
+    grep -n 'pub trait GuestMem' src/devices/virtio/queue.rs || { echo "no GuestMem trait"; ok=1; }
+    for f in src/devices/virtio/queue.rs src/devices/virtio/parse.rs; do
+        if grep -nE 'kvm_ioctls|kvm_bindings|vm_memory' "$f"; then echo "$f depends on KVM"; ok=1; fi
+    done
+    for fn in 'pub fn walk_chain' 'pub fn pop' 'pub fn add_used' 'pub fn parse_blk_request' \
+        'pub fn parse_net_tx' 'pub fn zero_vnet_header'; do
+        grep -qE "$fn" src/devices/virtio/queue.rs src/devices/virtio/parse.rs \
+            || { echo "missing: $fn"; ok=1; }
+    done
+    return $ok
+}
+
+KANI_HARNESSES="pop_stays_in_ring walk_chain_bounded blk_parse_no_panic blk_parse_ranges_in_memory
+blk_parse_sector_bounds net_tx_bounds net_tx_header_zeroed"
+
+# AC-8.2: every harness verifies, all of them within 20 minutes together.
+kani_proofs() {
+    local start out ok=0 h n
+    start=$(date +%s)
+    out=$(timeout 1200 cargo kani 2>&1); local rc=$?
+    echo "$out" | grep -E 'Checking harness|VERIFICATION:-|Verification Time|Complete -'
+    echo "cargo kani exit $rc after $(( $(date +%s) - start )) s"
+    [ "$rc" -eq 0 ] || ok=1
+    # Each harness by name: its exact "Checking harness" line must be present, and the
+    # first VERIFICATION line after it must be SUCCESSFUL. (No `grep | grep -m1`
+    # pipeline: under pipefail the early exit's SIGPIPE would fail it.)
+    for h in $KANI_HARNESSES; do
+        header="Checking harness devices::virtio::proofs::$h..."
+        if ! grep -qxF "$header" <<<"$out"; then
+            echo "$h: not run"; ok=1; continue
+        fi
+        result=$(awk -v hdr="$header" '$0 == hdr { on = 1; next } on && /^VERIFICATION:-/ { print; exit }' <<<"$out")
+        if [ "$result" = "VERIFICATION:- SUCCESSFUL" ]; then
+            echo "$h: SUCCESSFUL"
+        else
+            echo "$h: ${result:-no result}"; ok=1
+        fi
+    done
+    n=$(grep -c 'VERIFICATION:- SUCCESSFUL' <<<"$out")
+    [ "$n" -eq "$(wc -w <<<"$KANI_HARNESSES")" ] || { echo "$n harnesses successful"; ok=1; }
+    return $ok
+}
+
+# AC-8.3: fuzz a temporary copy of the committed seed corpus (the fuzzer adds inputs
+# to the corpus directory it runs on).
+fuzz_blk() {
+    local tmp rc before
+    before=$(cd fuzz/corpus/blk_request && ls | xargs sha256sum)
+    tmp=$(mktemp -d)
+    cp fuzz/corpus/blk_request/* "$tmp"/
+    cargo +nightly fuzz run blk_request "$tmp" -- -max_total_time="${FUZZ_SECONDS:-300}"
+    rc=$?
+    rm -rf "$tmp"
+    [ "$before" = "$(cd fuzz/corpus/blk_request && ls | xargs sha256sum)" ] \
+        || { echo "seed corpus changed"; return 1; }
+    return $rc
+}
+
+# AC-8.4: notes list every regression test for Kani/fuzz findings (each must exist and
+# pass), or say none were found.
+regressions_listed() {
+    local section tests t
+    section=$(awk '/^## / { on = ($0 == "## Bugs found by Kani and fuzzing") ; next } on' notes/phase-2.md)
+    [ -n "$section" ] || { echo "notes: no '## Bugs found by Kani and fuzzing' section"; return 1; }
+    tests=$(grep -oE 'regression_[a-z0-9_]+' <<<"$section" | sort -u)
+    if [ -z "$tests" ]; then
+        grep -qi 'none were found' <<<"$section"
+        return
+    fi
+    for t in $tests; do
+        cargo test --lib -- "$t" 2>&1 | grep -q 'test result: ok. [1-9]' || { echo "$t missing or failing"; return 1; }
+        echo "$t passes"
+    done
+}
+
+# AC-P1: every acceptance criterion in the spec has a PASS/FAIL line in this script.
+all_criteria_checked() {
+    local ok=0 id
+    for id in $(grep -oE '\*\*AC-[0-9P]+\.?[0-9]*\*\*' specs/phase-2/SPEC.md | tr -d '*' | sort -u); do
+        [ "$id" = "AC-0.x" ] && continue
+        [ "$id" = "AC-P1" ] && continue
+        grep -qE "^(tap_)?check $id " "$0" || { echo "$id has no check"; ok=1; }
+    done
+    return $ok
+}
+
+# Words in the part of notes/phase-2.md under heading $1 (up to the next heading of
+# the same or higher level). With $2, heading $1 only counts inside section $2.
+notes_section_words() {
+    awk -v h="$1" -v parent="${2:-}" '
+        parent != "" && index($0, parent) == 1 { in_parent = 1; next }
+        parent != "" && /^## / { in_parent = 0 }
+        on && /^#+ / && index($0, " ") <= level { on = 0 }
+        (parent == "" || in_parent) && index($0, h) == 1 { on = 1; level = index($0, " "); next }
+        on { print }
+    ' notes/phase-2.md | wc -w
+}
+
+# AC-P2: the notes explain each milestone, the request path, the seccomp allowlists,
+# the Kani properties and their limits, and have >= 12 answered interview questions.
+notes_complete() {
+    local ok=0 words heading answered
+    for heading in "## What each milestone does" "## How a virtio request travels" \
+        "## Seccomp allowlists" "## Kani properties and their limits"; do
+        words=$(notes_section_words "$heading")
+        echo "$heading: $words words"
+        [ "$words" -ge 50 ] || { echo "  -> too short or missing (need >= 50 words)"; ok=1; }
+    done
+    for heading in "### M4" "### M5" "### M6" "### M7" "### M8"; do
+        words=$(notes_section_words "$heading" "## What each milestone does")
+        echo "$heading explanation: $words words"
+        [ "$words" -ge 50 ] || { echo "  -> too short or missing (need >= 50 words)"; ok=1; }
+    done
+    grep -qxF '### What the proofs do not cover' \
+        <<<"$(awk '/^## / { on = ($0 == "## Kani properties and their limits"); next } on' notes/phase-2.md)" \
+        || { echo "Kani section has no '### What the proofs do not cover' subsection"; ok=1; }
+    words=$(notes_section_words "### What the proofs do not cover" "## Kani properties and their limits")
+    echo "### What the proofs do not cover: $words words"
+    [ "$words" -ge 50 ] || { echo "  -> too short (need >= 50 words)"; ok=1; }
+    answered=$(awk '
+        /^\*\*Q[0-9]+\./ { pending = 1; next }
+        pending && NF { if ($0 !~ /^(\*\*Q[0-9]+\.|#)/) n++; pending = 0 }
+        END { print n + 0 }
+    ' notes/phase-2.md)
+    echo "answered interview questions: $answered"
+    [ "$answered" -ge 12 ] || { echo "  -> need at least 12"; ok=1; }
+    return $ok
+}
+
 # Ignored tests boot VMs (and, from M5, share one TAP), so they never run concurrently.
 itest() { cargo test --test "$1" -- --include-ignored --exact "$2" --test-threads=1; }
 
@@ -244,6 +377,16 @@ check AC-7.3 "all M4, M5 and M6 criteria pass with seccomp enabled" m4_to_m6_wit
 check AC-7.4 "forbidden syscall on a vCPU kills the VMM with SIGSYS" m7 ac_7_4_forbidden_syscall_kills_vmm_with_sigsys
 check AC-7.5 "--no-seccomp warns on stderr and still boots" m7 ac_7_5_no_seccomp_warns_and_boots
 check AC-7.6 "notes/phase-2.md lists every allowed syscall per thread type" allowlists_in_notes
+
+echo "== M8 — Verification =="
+check AC-8.1 "queue/parse are pure functions over GuestMem, no KVM" pure_parsers
+check AC-8.2 "cargo kani: all 7 harnesses SUCCESSFUL within 20 min" kani_proofs
+check AC-8.3 "fuzz blk_request for ${FUZZ_SECONDS:-300} s on a corpus copy: no crashes" fuzz_blk
+check AC-8.4 "every Kani/fuzz finding has a regression test listed in the notes" regressions_listed
+
+echo "== Phase 2 done =="
+check AC-P1 "every spec criterion has a PASS/FAIL line here" all_criteria_checked
+check AC-P2 "notes/phase-2.md: milestones, request path, allowlists, Kani, >= 12 questions" notes_complete
 
 if [ "$failed" -eq 0 ]; then echo "RESULT: PASS"; else echo "RESULT: FAIL"; fi
 exit "$failed"

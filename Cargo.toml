@@ -26,3 +26,7 @@ vmm-sys-util = "0.15"
 [dev-dependencies]
 rexpect = "0.7.1"
 tempfile = "3.27.0"
+
+# Kani harnesses are gated by #[cfg(kani)]; `cargo kani` sets it, plain builds don't.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

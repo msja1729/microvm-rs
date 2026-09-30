@@ -1,3 +1,6 @@
 /target
 /guests/build/
 /artifacts/
+/fuzz/target/
+/fuzz/artifacts/
+/fuzz/Cargo.lock

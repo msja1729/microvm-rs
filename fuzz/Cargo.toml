@@ -1,0 +1,24 @@
+[package]
+name = "kvm-hello-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+kvm-hello = { path = ".." }
+
+# Its own workspace: the root package's `cargo build/test/clippy` (stable) never
+# builds this crate, which needs nightly and libFuzzer.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "blk_request"
+path = "fuzz_targets/blk_request.rs"
+test = false
+doc = false
+bench = false

@@ -9,6 +9,8 @@ pub mod block;
 pub mod mmio;
 pub mod net;
 pub mod parse;
+#[cfg(kani)]
+mod proofs;
 pub mod queue;
 
 use std::io;

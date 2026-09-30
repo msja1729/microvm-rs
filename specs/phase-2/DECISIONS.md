@@ -216,3 +216,35 @@ Choices made inside the spec. Format: question → options → choice → why. D
 - **Options:** require exactly the VMM's threads; also allow KVM's own workers.
 - **Chose:** the AC-7.1 test requires `vmm`, `stdin` and every `vcpuN`, allows only extra threads named `kvm-*` (KVM's `kvm-nx-lpage-recovery` worker), and requires `Seccomp: 2` on every thread, workers included.
 - **Why:** KVM adds that worker to the VM owner's process. It is not a VMM thread (the spec's scope), and it inherits the filter anyway.
+
+## M8 — Verification
+
+### D42. What "a chain that loops back on itself" means under concurrent rewrites
+- **Options:** make `walk_chain` track visited indices and reject any revisit; keep the spec's count-based definition and prove the loop property for a stable table.
+- **Chose:** keep `walk_chain` count-based (reject once a chain would exceed `size` descriptors, as the spec's behavioral rules define a loop). `walk_chain_bounded` proves termination, in-table indices, the size bound and `INDIRECT` rejection for arbitrary (even concurrently rewritten) descriptors, and proves that a revisit is rejected when the table is stable (`KaniMem.stable`).
+- **Why:** Kani's counterexample (descriptor 0 → 0, rewritten between reads so the second copy ends the chain) is bounded and safe: each descriptor is read once into a local copy and checked. A visited set would add state for no safety gain, and would change behavior beyond the spec. With the user's approval, AC-8.2(d) was reworded to state exactly these two properties (commit `7f2dd3d`).
+
+### D43. Chains of concrete length in the harnesses
+- **Options:** one symbolic-length `Vec` (`all[..n].to_vec()`); branch on `n` and pass slices of each concrete length 0..=4.
+- **Chose:** `for_any_chain` branches over each concrete length.
+- **Why:** identical coverage, but with symbolic-length heap data `net_tx_bounds` alone ran past 15 minutes. Now all seven harnesses take about a minute, well inside the 20-minute bound, with no need for Q5's fallback to queue size 2.
+
+### D44. `walk_chain` loop shape
+- **Options:** check the length at the top of each iteration (the body runs `size + 1` times); check it after adding a descriptor that still has `NEXT`.
+- **Chose:** the check after adding. Behavior is unchanged (a chain that still has `NEXT` after `size` descriptors is `TooLong`).
+- **Why:** the body then runs at most `size` times, so Kani proves termination with the spec's unwind bound of 5 for queue size 4.
+
+### D45. Harness bookkeeping in fixed-size arrays
+- **Options:** record descriptor reads in a `Vec`; in a `[u64; 4]` with a counter.
+- **Chose:** the fixed array, with an assertion at record time that there are never more than 4 descriptor reads.
+- **Why:** harness loops over a `Vec` failed Kani's unwinding assertions (an `assert!` on its length doesn't bound the loop for the unwinder). Fixed bounds keep the proof about the code, not about the harness.
+
+### D46. `fuzz/Cargo.lock`
+- **Options:** commit it; ignore it.
+- **Chose:** ignore it (`.gitignore`, next to `fuzz/target` and `fuzz/artifacts`).
+- **Why:** committing it would add a file outside the spec's output-file list, which needs a spec change first. The root `Cargo.lock` still pins every shared crate version.
+
+### D47. Proof and fuzz checks in the verify script
+- **Options:** trust the exit code of `cargo kani`; check each named harness. For the fuzzer: use `git status` to detect corpus changes; compare checksums.
+- **Chose:** AC-8.2 requires exit 0 within 1200 s, `VERIFICATION:- SUCCESSFUL` for each of the seven named harnesses, and exactly seven successes. AC-8.3 compares the seed corpus's checksums before and after fuzzing a `mktemp -d` copy. AC-P1 checks that every `**AC-…**` in the spec has a `check` line. AC-P2 checks the required notes sections (≥ 50 words each), the per-milestone explanations, the "not cover" list and ≥ 12 answered questions.
+- **Why:** a harness that is renamed or silently dropped must not pass, and the corpus check must work whether or not the corpus is committed yet.

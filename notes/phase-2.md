@@ -1,5 +1,49 @@
 # Phase 2 — Learning notes
 
+## What each milestone does
+
+### M4 — virtio-blk
+Phase 1's guest had only a serial port and a RAM disk that vanished at every reboot. M4 gives it a real disk. The guest's Linux driver talks to a *virtio* device: a device designed for virtual machines, where the guest and the VMM share queues of buffer descriptions in guest RAM instead of emulating a physical disk controller register by register. The device appears at a fixed guest-physical window (`0xd000_0000`), which the VMM announces on the kernel command line (`virtio_mmio.device=4K@0xd0000000:5`). The guest's reads and writes of that window exit to the VMM, which answers from the *virtio-mmio transport*: identification, feature negotiation (version 1, flush, read-only), and where the guest put its queue. The guest describes each disk request as a chain of three buffers (a header saying read/write/flush and which sector, the data, a status byte) and rings a doorbell. The VMM checks every guest-supplied address and length, copies data between guest RAM and a host image file through a small fixed buffer, writes the status, marks the request done, and raises IRQ 5. With this came a new thread layout: each vCPU runs on its own thread and the main thread became an event loop, because the disk work must not happen on the thread that runs guest code.
+
+### M5 — virtio-net
+M5 adds a network card built the same way. On the host side it is backed by a TAP interface, a virtual Ethernet port that a normal user may attach to once root has created it for them (`scripts/setup-tap.sh`). The guest has two queues: one of empty buffers the VMM fills with frames arriving from the host (RX), and one of frames the guest wants to send (TX). Every frame travels with a 12-byte virtio-net header; the VMM configures the TAP to use exactly that header size, turns all offloads off, and zeroes the header of every outgoing frame, so nothing the guest writes there can steer the host's network stack. The main thread watches the TAP for incoming frames, but only while the guest has buffers ready, so it never spins on a frame it can't deliver. The result: guest and host can ping each other and transfer files over `172.16.0.0/24`.
+
+### M6 — Multiple vCPUs
+M6 lets the guest use up to four CPUs. KVM runs each vCPU on its own host thread; the VMM's work is to describe the machine so Linux will start and use them. It writes an Intel MultiProcessor table into the last KiB of base memory: one entry per CPU, the IOAPIC, and how the 16 legacy interrupt lines are wired. It gives each vCPU its own CPUID answers (its own APIC ID, and a consistent "one socket, N cores" topology), and it points each local APIC's LINT0/LINT1 pins at the PIC and NMI. Only CPU 0 gets starting registers; the others wait inside KVM until Linux wakes them with INIT/startup IPIs. The MP table is written in every boot, so even a one-CPU guest now routes interrupts through the IOAPIC. When the guest reboots, the VMM stops every vCPU thread (kicking any that are idle inside `KVM_RUN` with a signal) and joins them before exiting.
+
+### M7 — Hardening
+A guest is untrusted, and a bug in device emulation could let it run code inside the VMM. M7 limits the damage with seccomp: each long-lived thread installs a filter listing the only system calls it may make, and any other call kills the whole VMM with `SIGSYS`. The vCPU threads may only run the guest (`ioctl(KVM_RUN)`), write output, and synchronize; only the main thread may read and write the disk file and the TAP; no thread can open files, create sockets or start programs. The lists were derived from traces of the real VMM rather than guessed, which caught calls a code review would miss (glibc's `tcsetattr` also reads the terminal settings). `--no-seccomp` turns the filters off for debugging, with a warning.
+
+### M8 — Verification
+The code that reads guest-controlled data (queue indices, descriptor chains, blk request headers, net TX chains) is written as pure functions over a small memory trait, with no KVM in sight. That makes it checkable by tools. Kani, a model checker, proves properties for *every* possible input within bounds (queue size 4, fully symbolic descriptors, memory size and disk capacity): the parsers never panic or overflow, every accepted range lies inside guest RAM and the disk, loops and `INDIRECT` chains are rejected within a bounded number of steps, and the ring code never reads outside the rings. A fuzzer (libFuzzer via `cargo-fuzz`) complements it by throwing millions of random guest-memory images with a larger queue (16) at the whole blk path.
+
+## How a virtio request travels
+
+```
+guest driver                          VMM (main thread: event loop)                 host
+------------                          -----------------------------                 ----
+build descriptor chain in RAM
+put head index in avail ring
+avail.idx += 1
+writel(q, base+0x50)  --KVM_IOEVENTFD-->  queue eventfd readable
+  (no VM exit to user space)               epoll_wait returns
+                                           lock transport
+                                           Queue::pop: read avail.idx, slot (checked)
+                                           walk_chain: copy descriptors (bounded)
+                                           parse_blk_request / parse_net_tx (checked)
+                                           blk: pread/pwrite via 64 KiB buffer  ----->  disk image
+                                                fdatasync for FLUSH             ----->  (durable)
+                                           net TX: gather, zero header, write  ----->  TAP -> host stack
+                                           write status byte, used elem,
+                                           Release fence, used.idx
+                                           InterruptStatus |= 1; write irqfd
+vm_interrupt  <--KVM_IRQFD: IRQ 5/6 via IOAPIC--
+read InterruptStatus (vCPU exit, lock-free)
+write InterruptACK
+scan used ring, complete request
+```
+Net RX runs the other way: the host kernel queues a frame on the TAP; the event loop wakes on the TAP fd only when the guest has posted RX buffers, reads one frame, scatters it into the next RX chain, publishes it in the used ring and raises IRQ 6. Register accesses other than `QueueNotify` (feature negotiation, queue setup, `Status`) are MMIO exits handled on the vCPU thread that made them, under the same transport lock.
+
 ## Seccomp allowlists
 
 Every long-lived thread installs its own filter (`src/seccomp.rs`) before it handles guest-controlled data: each vCPU thread before its first `KVM_RUN`, the stdin thread before its first `read`, and the main thread right before the event loop, after every file, eventfd, KVM object and thread exists. `PR_SET_NO_NEW_PRIVS` is set once, before the first thread is spawned. Any syscall not listed kills the whole process (`SECCOMP_RET_KILL_PROCESS`, `SIGSYS`). `--no-seccomp` turns all of this off, for debugging only.
@@ -64,6 +108,60 @@ Every long-lived thread installs its own filter (`src/seccomp.rs`) before it han
 
 Not a VMM thread: KVM itself adds a `kvm-nx-lpage-recovery` worker to the VM owner's process. It copies the creating thread's seccomp and no-new-privs state, and the M7 test checks that it, too, reports `Seccomp: 2`.
 
+## Kani properties and their limits
+
+`cargo kani` checks seven harnesses in `src/devices/virtio/proofs.rs` (about 1 minute in total here; the bound is 20). Queue size 4, so chains of up to 4 descriptors; loop unwinding 5 (and Kani's unwinding assertions prove no loop needs more). Guest memory is `KaniMem`: its size is symbolic and every in-bounds read returns arbitrary bytes, so every descriptor address, length, flag and next index, ring index, request header and disk capacity is symbolic. Arithmetic overflow, out-of-bounds indexing and panics are checked automatically in every harness.
+
+| Harness | Proves |
+|---|---|
+| `pop_stays_in_ring` | (e) `pop` reads only `avail.idx` and ring slots; a returned head is `< size` and advances the position by one; an `avail.idx` more than `size` ahead is rejected; `add_used` writes only inside the used ring |
+| `walk_chain_bounded` | (d)+(e) the walk ends within `size` iterations for *any* descriptor contents, reads only table entries with index `< size`, returns 1..=size descriptors, rejects `INDIRECT`; with a stable table, a chain revisiting an index is rejected |
+| `blk_parse_no_panic` | (a) the blk parser never panics or overflows |
+| `blk_parse_ranges_in_memory` | (b) every data range and the status byte of an accepted request lie inside guest memory (checked in `u128`) |
+| `blk_parse_sector_bounds` | (c) accepted IN/OUT requests satisfy `sector × 512 + len ≤ capacity × 512` in exact arithmetic, so no `u64` overflow was possible, and every out-of-range request is rejected |
+| `net_tx_bounds` | (f) TX parsing never panics; an accepted chain's length is in `[12, 65 562]`, equals the sum of its buffers, all inside memory |
+| `net_tx_header_zeroed` | (f) `zero_vnet_header` never panics on any buffer length up to 64 and leaves the header zero and the rest unchanged |
+
+The proofs were checked against mutations: with the `INDIRECT` rejection removed from `walk_chain`, or the upper TX length check removed from `parse_net_tx`, the corresponding harness fails.
+
+### What the proofs do not cover
+- Only queue size 4. Nothing in the code depends on the size beyond `< size` comparisons and `% size`, but chains of up to 256 descriptors are argued, not proven; the fuzzer exercises size 16.
+- `KaniMem` returns arbitrary bytes, not a real memory: it proves "for any values the guest could present", not anything about a particular guest's data, and it does not model the host mmap, `vm-memory`, or real concurrency (only its effect: values changing between reads).
+- The code that acts on parsed requests is not proven: the block device's file I/O (`block.rs`), the net RX scatter and TAP I/O (`net.rs`), the virtio-mmio transport registers (`mmio.rs`), the event loop, the MMIO/PIO buses, the MP table and CPUID code, and seccomp. They are covered by unit and integration tests only.
+- `has_available` and the RX chain parser `parse_net_rx` have no harness (they are simple and unit-tested).
+- Liveness and ordering (memory fences, interrupt delivery, lost notifications) are outside what these harnesses state.
+- The fuzzer covers the blk path only (pop → walk → parse → add_used), with inputs up to libFuzzer's default length, where the rings and descriptors live.
+
+## Bugs found by Kani and fuzzing
+
+No bugs in the VMM code were found by Kani or by the fuzzer (1.36 M executions in the first 30 s smoke run, plus the 300 s verify run), so there are no regression tests for them: none were found. Two things Kani did find, both in the proof harnesses, not in the code:
+- With a chain of symbolic *length* (a `Vec` sliced at a symbolic index), `net_tx_bounds` alone ran past 15 minutes in the SAT solver. Harnesses now branch over each concrete length 0..=4 instead, with the same coverage; all seven finish in about a minute.
+- `walk_chain_bounded` first asserted that any chain visiting a descriptor index twice is rejected. Kani produced a counterexample: head 0 has `NEXT` → 0, and when the walker reads descriptor 0 again the (concurrently rewritten) bytes no longer have `NEXT`, so a 2-descriptor chain is accepted. That is not a safety bug: every descriptor read is in the table and checked, the walk is still bounded by `size`, and the spec defines the loop to reject as "a chain with more descriptors than the queue size", which is what the walker enforces. In a table the guest does not rewrite, a revisit is an infinite cycle, and the harness proves it is rejected. The harness now states exactly that, and AC-8.2(d) was reworded to match (D42).
+
+## Fuzz seed corpus
+
+The five seeds in `fuzz/corpus/blk_request/` (IN, OUT, FLUSH, GET_ID, a 2-descriptor loop) were generated once, from the repository root, with:
+
+```python
+import struct
+NEXT, WRITE = 1, 2
+def seed(name, descs, rtype=None, sector=0, capacity=128):
+    mem = bytearray(0x610)
+    for i, (addr, ln, flags, nxt) in enumerate(descs):
+        mem[16*i:16*i+16] = struct.pack("<QIHH", addr, ln, flags, nxt)
+    mem[0x100:0x106] = struct.pack("<HHH", 0, 1, 0)       # avail: flags, idx=1, ring[0]=head 0
+    if rtype is not None:
+        mem[0x400:0x410] = struct.pack("<IIQ", rtype, 0, sector)  # blk header
+    open(f"fuzz/corpus/blk_request/{name}", "wb").write(struct.pack("<Q", capacity) + mem)
+hdr, data, status = (0x400, 16, NEXT, 1), (0x1000, 512, NEXT | WRITE, 2), (0x600, 1, WRITE, 0)
+seed("in", [hdr, data, status], rtype=0, sector=3)
+seed("out", [hdr, (0x1000, 512, NEXT, 2), status], rtype=1, sector=5)
+seed("flush", [hdr, (0x600, 1, WRITE, 0)], rtype=4)
+seed("get_id", [hdr, (0x1000, 20, NEXT | WRITE, 2), status], rtype=8)
+seed("loop", [(0x400, 16, NEXT, 1), (0x600, 1, NEXT | WRITE, 0)], rtype=0)
+```
+Input format: 8 bytes of capacity (sectors, LE), then the guest-memory image (zero-padded to 64 KiB): descriptor table at 0x0, available ring at 0x100, used ring at 0x200, queue size 16.
+
 ## Interview questions
 
 ### M4 — virtio-blk
@@ -109,3 +207,14 @@ The code calls `tcsetattr`, `File::drop`, `pthread_kill` and `thread::sleep`. Th
 
 **Q3. What does seccomp not protect against here, and how does a jailer-style design (out of scope for Phase 2) complement it?**
 Seccomp limits which syscalls a thread can make, and some of their arguments (`ioctl` requests, `PROT_EXEC`), but not what the allowed ones do. The main thread may still `pwrite` anywhere in the disk file and `write` to the TAP. A vCPU thread may still `write` to any fd it holds, including stdout and eventfds. Memory corruption inside the VMM can still misuse any open fd or read secrets from process memory. The filter also doesn't hide the host filesystem from fds opened before it was installed, and it doesn't limit CPU or memory use. A jailer adds the missing layers: it starts the VMM in a chroot with only the files it needs, in its own mount/PID/network namespaces, as an unprivileged dedicated uid, with cgroup limits. Seccomp then shrinks the kernel attack surface inside that box. Firecracker uses both. This VMM has only the seccomp half.
+
+### M8 — Verification
+
+**Q1. What exactly did Kani prove about the descriptor-chain walker, and why is "for every possible input" different from what the fuzzer gives you?**
+For a queue of size 4 and *every* possible combination of descriptor-table address, head index, memory size and descriptor bytes (including bytes that change between reads), `walk_chain` terminates within 4 iterations (Kani's unwinding assertions fail if any loop could run longer), reads only 16-byte-aligned table entries with index < 4, returns 1 to 4 descriptors, and rejects any `INDIRECT` descriptor; with a stable table it rejects any chain that revisits an index. Kani turns the code and the property into a SAT problem and shows no satisfying counterexample exists, so it is a proof over the whole (bounded) input space. The fuzzer instead runs the real code on millions of concrete inputs, guided by coverage; it can use a bigger queue (16), the real `VecMem`, and the whole pop → walk → parse → add_used pipeline, but it can only show bugs, never their absence. They complement each other: Kani for exhaustive guarantees on small bounds, fuzzing for breadth on realistic sizes and for code paths the proofs don't model.
+
+**Q2. Why is guest memory modelled as "every read returns arbitrary bytes" rather than as a byte array, and what did that model reveal?**
+A symbolic byte array the size of guest RAM would make the solver reason about up to 2^64 addresses; `KaniMem` avoids that entirely by keeping only a symbolic size and returning fresh arbitrary bytes on each in-bounds read. That is also a faithful model of the real threat: other guest vCPUs can rewrite descriptors while the VMM reads them, so two reads of the same address really can disagree. It revealed that "a chain that revisits an index is rejected" is only true when the table is stable: with a concurrent rewrite, a revisited descriptor can end the chain early. That is safe (the code reads each descriptor once into a local copy, checks it, and the walk stays bounded), and it is why the code defines a loop as "more than `size` descriptors" rather than "an index seen twice". The harness adds an explicit stable mode to prove the loop property where it is meaningful.
+
+**Q3. The first version of one harness took over 15 minutes; after a change it took 10 seconds with the same coverage. What changed, and what does that teach about writing proofs?**
+The harness built its input as `all[..n].to_vec()` with a symbolic `n`. That made every later structure (the parser's `Vec` of ranges, the harness's sums over it) heap data of symbolic length, which CBMC encodes with symbolic pointer arithmetic and many same-allocation checks, and the SAT problem blew up. Branching on `n` with a `match` and passing slices of *concrete* length 0, 1, 2, 3, 4 covers exactly the same inputs, but each branch has fixed sizes that constant-propagate, so the problem is small. A related lesson came from the unwinding assertions on a harness loop over a `Vec`: an `assert!` about its length doesn't bound the loop for the unwinder, while looping over a constant bound does. Proofs are programs for a solver: keep sizes concrete where the property allows it, make the symbolic parts the values the attacker controls, and check the harness can fail (mutation testing) before trusting a "SUCCESSFUL".
