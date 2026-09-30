@@ -163,7 +163,7 @@ Precondition: the TAP precondition above.
   - (a) the blk parser never panics;
   - (b) every data range of an accepted request lies inside guest memory;
   - (c) sector × 512 + length never overflows, and any request outside the disk size is rejected;
-  - (d) a chain that loops back on itself is rejected in a bounded number of steps;
+  - (d) the chain walk always ends within the queue size (at most queue-size descriptors are read), and a chain that revisits a descriptor index is rejected when the guest does not modify the descriptor table during the walk;
   - (e) ring handling never indexes outside the rings or the descriptor table: every descriptor index used is `< queue size`, and a chain containing an `INDIRECT` descriptor is rejected;
   - (f) the net TX header handling never panics, rejects chains outside the allowed length range, and the header it hands to the TAP is all zeros.
 - **AC-8.3** A `cargo-fuzz` target for the blk request parser runs for 300 s (configurable in the verify script) with zero crashes. A seed corpus is committed; the verify script fuzzes a temporary copy of it, so the committed corpus never changes.
