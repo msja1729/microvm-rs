@@ -16,6 +16,7 @@ kvm-ioctls = "0.25.0"
 libc = "0.2.189"
 linux-loader = { version = "0.14.0", features = ["bzimage"] }
 log = "0.4.34"
+seccompiler = "0.5"
 thiserror = "2.0.21"
 virtio-bindings = "0.2.7"
 vm-memory = { version = "0.18.0", features = ["backend-mmap"] }

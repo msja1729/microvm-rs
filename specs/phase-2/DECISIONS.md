@@ -184,3 +184,35 @@ Choices made inside the spec. Format: question → options → choice → why. D
 - **Options:** leave it unchecked (it is a performance bound, not an AC); check it where the spec's configuration is booted.
 - **Chose:** AC-6.4 asserts that each of its 10 boots (disk + TAP + 4 vCPUs) reaches `PHASE1-INIT-OK` within 30 s. Measured: about 4 s each.
 - **Why:** AC-6.4 boots exactly the configuration the bound describes, so checking there costs nothing.
+
+## M7 — Hardening
+
+### D36. `TCGETS` in every filter
+- **Options:** only `TCSETS` for the signal handler (as AC-7.1 names it); also `TCGETS`.
+- **Chose:** `ioctl` allows `TCGETS` and `TCSETS` on every thread, plus `KVM_RUN` on vCPUs.
+- **Why:** the traces show glibc's `tcsetattr` issues `TCGETS`, `TCSETS`, `TCGETS`. With `TCSETS` alone, a signal handler would kill the VMM with `SIGSYS` while restoring the terminal. AC-7.1 lists a minimum, so allowing more is within the spec.
+
+### D37. Allocator syscalls
+- **Options:** allow only the allocator syscalls each trace happened to show; allow the whole family on every thread.
+- **Chose:** `mmap`, `mprotect`, `munmap`, `madvise`, `brk` and `mremap` on every thread. `mmap`/`mprotect` are argument-filtered so `PROT_EXEC` is never allowed.
+- **Why:** which of these malloc calls depends on heap state (arena growth, large blocks, trimming), not on the code path. A trace-exact list would kill the VMM at random under memory pressure (pitfall 9). Forbidding `PROT_EXEC` keeps a compromised thread from creating executable memory.
+
+### D38. Seccomp only in `boot` mode
+- **Options:** filter `raw` mode too; `boot` only.
+- **Chose:** `boot` only.
+- **Why:** AC-7.1 names `boot`'s threads (main/event loop, vCPUs, stdin). `raw` runs its single vCPU on the caller's thread, and the M1/M2 tests call `run_raw` inside the test harness process, which a filter would then restrict or kill.
+
+### D39. A filter fails to install
+- **Options:** keep running unfiltered with a warning; end the VM.
+- **Chose:** the thread records `Error::Seccomp` (exit 1) as the VM outcome and does no work; the normal stop/join path follows.
+- **Why:** a VMM that silently runs without the filter it was asked to use is worse than one that refuses to run.
+
+### D40. How the verify script checks AC-7.2 and AC-7.3
+- **Options:** only `grep` the source; also check at run time. For AC-7.3: rerun every M4–M6 test; reuse the M4–M6 results from the same run.
+- **Chose:** AC-7.2 is a source-order check in `run_boot` plus the run-time `NoNewPrivs: 1` check on every thread. AC-7.3 passes when every AC-4.x/5.x/6.x check in the same run passed (they run with seccomp, the default) and no M4–M6 test passes `--no-seccomp`.
+- **Why:** the run-time check proves the flag is really set. Rerunning four minutes of boots would prove nothing new.
+
+### D41. Kernel worker threads in the VMM process
+- **Options:** require exactly the VMM's threads; also allow KVM's own workers.
+- **Chose:** the AC-7.1 test requires `vmm`, `stdin` and every `vcpuN`, allows only extra threads named `kvm-*` (KVM's `kvm-nx-lpage-recovery` worker), and requires `Seccomp: 2` on every thread, workers included.
+- **Why:** KVM adds that worker to the VM owner's process. It is not a VMM thread (the spec's scope), and it inherits the filter anyway.

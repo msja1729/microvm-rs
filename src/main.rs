@@ -72,6 +72,12 @@ enum Command {
         /// Guest MAC address [default: 06:00:ac:10:00:02].
         #[arg(long, requires = "tap", value_parser = parse_mac)]
         guest_mac: Option<[u8; 6]>,
+        /// Do not install seccomp filters (debugging only).
+        #[arg(long)]
+        no_seccomp: bool,
+        /// Test only: make vCPU 0 call a syscall outside its seccomp allowlist.
+        #[arg(long, hide = true)]
+        seccomp_test_violation: bool,
     },
 }
 
@@ -113,18 +119,27 @@ fn main() -> ExitCode {
             disk_ro,
             tap,
             guest_mac,
-        } => run_boot(&BootConfig {
-            kvm_device: cli.kvm_device,
-            kernel,
-            initrd,
-            mem_mib,
-            cmdline,
-            vcpus,
-            disk,
-            disk_ro,
-            tap,
-            guest_mac,
-        }),
+            no_seccomp,
+            seccomp_test_violation,
+        } => {
+            if no_seccomp {
+                eprintln!("vmm: warning: seccomp disabled (--no-seccomp); for debugging only");
+            }
+            run_boot(&BootConfig {
+                kvm_device: cli.kvm_device,
+                kernel,
+                initrd,
+                mem_mib,
+                cmdline,
+                vcpus,
+                disk,
+                disk_ro,
+                tap,
+                guest_mac,
+                seccomp: !no_seccomp,
+                seccomp_test_violation,
+            })
+        }
     };
 
     match result {

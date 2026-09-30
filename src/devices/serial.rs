@@ -7,12 +7,14 @@ use std::thread;
 use std::time::Duration;
 
 use log::warn;
+use seccompiler::BpfProgram;
 use vm_superio::serial::{Error as SerialError, NoEvents};
 use vm_superio::{Serial, Trigger};
 use vmm_sys_util::eventfd::EventFd;
 
 use super::pio_bus::{PioAction, PioDevice};
 use crate::error::{Error, Result};
+use crate::event_loop::VmExit;
 
 /// First I/O port of COM1.
 pub const COM1_BASE: u16 = 0x3f8;
@@ -126,7 +128,13 @@ const FIFO_FULL_RETRY: Duration = Duration::from_millis(1);
 /// when the 64-byte RX FIFO is full the thread waits for the guest to drain it.
 /// On EOF or a read error the thread stops; the guest keeps running.
 /// The thread is never joined: at VM exit it may still be blocked in `read`.
-pub fn spawn_stdin_reader<T, W>(serial: Arc<Mutex<SerialDevice<T, W>>>) -> Result<()>
+/// With `seccomp`, the thread installs that filter before its first read; if that
+/// fails, it reports the error through `exit` and reads nothing.
+pub fn spawn_stdin_reader<T, W>(
+    serial: Arc<Mutex<SerialDevice<T, W>>>,
+    seccomp: Option<BpfProgram>,
+    exit: Arc<VmExit>,
+) -> Result<()>
 where
     T: Trigger + Send + 'static,
     W: Write + Send + 'static,
@@ -134,6 +142,12 @@ where
     thread::Builder::new()
         .name("stdin".into())
         .spawn(move || {
+            if let Some(filter) = &seccomp {
+                if let Err(e) = crate::seccomp::install(filter) {
+                    exit.finish(Err(e));
+                    return;
+                }
+            }
             let mut stdin = io::stdin().lock();
             let mut buf = [0u8; 64];
             loop {

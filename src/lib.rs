@@ -13,6 +13,7 @@ pub mod devices;
 pub mod error;
 pub mod event_loop;
 pub mod loader;
+pub mod seccomp;
 pub mod terminal;
 pub mod vcpu;
 pub mod vm;
@@ -135,6 +136,10 @@ pub struct BootConfig {
     pub tap: Option<String>,
     /// Guest MAC address; `DEFAULT_MAC` when `None`.
     pub guest_mac: Option<[u8; 6]>,
+    /// Install the per-thread seccomp filters (off only with `--no-seccomp`).
+    pub seccomp: bool,
+    /// Test only: vCPU 0 makes a forbidden syscall after installing its filter.
+    pub seccomp_test_violation: bool,
 }
 
 /// Smallest guest RAM accepted when booting Linux.
@@ -327,17 +332,32 @@ pub fn run_boot(config: &BootConfig) -> Result<()> {
         )));
     }
 
+    let filters = match config.seccomp {
+        true => Some(seccomp::Filters::compile()?),
+        false => None,
+    };
+
     terminal::install_signal_handlers()?;
     vcpu::install_kick_handler()?;
     // Dropped at the end of this function on every path, restoring the terminal.
     let _raw_mode = terminal::enter_raw_mode()?;
-    devices::serial::spawn_stdin_reader(serial)?;
+    if filters.is_some() {
+        // Before the first thread is spawned, so every thread inherits it.
+        seccomp::set_no_new_privs()?;
+    }
+    devices::serial::spawn_stdin_reader(
+        serial,
+        filters.as_ref().map(|f| f.stdin.clone()),
+        exit.clone(),
+    )?;
 
     let shared = vcpu::Shared {
         pio: Arc::new(Mutex::new(pio)),
         mmio: Arc::new(mmio),
         stop: Arc::new(AtomicBool::new(false)),
         exit: exit.clone(),
+        seccomp: filters.as_ref().map(|f| Arc::new(f.vcpu.clone())),
+        seccomp_test_violation: config.seccomp_test_violation,
     };
     let mut handles = Vec::with_capacity(vcpus.len());
     for (index, vcpu) in vcpus.into_iter().enumerate() {
@@ -351,6 +371,13 @@ pub fn run_boot(config: &BootConfig) -> Result<()> {
         }
     }
 
+    // Every file, eventfd, KVM object and thread exists now; from here on the main
+    // thread only runs the event loop and the shutdown.
+    if let Some(filters) = &filters {
+        if let Err(e) = seccomp::install(&filters.main) {
+            exit.finish(Err(e));
+        }
+    }
     event_loop::run(&mut events, &exit);
     vcpu::stop_all(handles, &shared.stop)?;
     exit.take()

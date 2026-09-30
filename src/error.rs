@@ -77,6 +77,8 @@ pub enum Error {
     GuestShutdown,
     #[error("event loop error: {0}")]
     EventLoop(String),
+    #[error("seccomp error: {0}")]
+    Seccomp(String),
 }
 
 impl Error {
@@ -107,7 +109,8 @@ impl Error {
             | Error::Terminal(_)
             | Error::UnexpectedExit(_)
             | Error::GuestShutdown
-            | Error::EventLoop(_) => 1,
+            | Error::EventLoop(_)
+            | Error::Seccomp(_) => 1,
         }
     }
 }

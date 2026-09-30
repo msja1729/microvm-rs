@@ -9,6 +9,8 @@ LOG_DIR=target/verify-phase-2
 VMM=target/debug/vmm
 mkdir -p "$LOG_DIR"
 failed=0
+# IDs of failed (or skipped) criteria, for criteria that depend on earlier ones.
+failed_ids=""
 
 # check <id> <description> <command...>
 check() {
@@ -19,6 +21,7 @@ check() {
     else
         printf 'FAIL  %-7s %s (see %s)\n' "$id" "$desc" "$LOG_DIR/$id.log"
         failed=1
+        failed_ids="$failed_ids $id"
     fi
 }
 
@@ -101,6 +104,7 @@ tap_check() {
     else
         printf 'SKIP  %-7s %s (run: sudo scripts/setup-tap.sh)\n' "$1" "$2"
         failed=1
+        failed_ids="$failed_ids $1"
     fi
 }
 
@@ -108,6 +112,74 @@ tap_check() {
 m4_m5_with_vcpus() {
     VMM_TEST_VCPUS=$1 cargo test --test m4_virtio_blk --test m5_virtio_net \
         -- --include-ignored --test-threads=1
+}
+
+# AC-7.1 (static part): filters are defined only in src/seccomp.rs, and every
+# allowlist line there (`(libc::SYS_...`) carries a `// why` comment.
+seccomp_source() {
+    local ok=0 outside uncommented
+    outside=$(grep -rnE 'SeccompFilter|apply_filter|libc::SYS_' src --include='*.rs' | grep -v '^src/seccomp.rs:')
+    [ -z "$outside" ] || { echo "seccomp rules outside src/seccomp.rs:"; echo "$outside"; ok=1; }
+    uncommented=$(grep -nE '^[[:space:]]*\(libc::SYS_' src/seccomp.rs | grep -v '//')
+    [ -z "$uncommented" ] || { echo "allowlist lines without a comment:"; echo "$uncommented"; ok=1; }
+    echo "allowlist lines: $(grep -cE '^[[:space:]]*\(libc::SYS_.*//' src/seccomp.rs)"
+    return $ok
+}
+
+# AC-7.2 (static part): run_boot sets PR_SET_NO_NEW_PRIVS before it spawns the first
+# thread and before the first filter is installed.
+no_new_privs_first() {
+    local nnp first
+    nnp=$(grep -n 'seccomp::set_no_new_privs()' src/lib.rs | head -1 | cut -d: -f1)
+    first=$(grep -nE 'spawn_stdin_reader\(|vcpu::spawn\(|seccomp::install\(' src/lib.rs | head -1 | cut -d: -f1)
+    echo "set_no_new_privs at line ${nnp:-none}; first spawn/install at line ${first:-none}"
+    grep -q 'PR_SET_NO_NEW_PRIVS' src/seccomp.rs && [ -n "$nnp" ] && [ -n "$first" ] && [ "$nnp" -lt "$first" ]
+}
+
+# AC-7.3: the M4-M6 checks above ran with seccomp on (the default): all passed, and
+# none of their tests disables seccomp.
+m4_to_m6_with_seccomp() {
+    local ok=0
+    if grep -n -- '--no-seccomp' tests/m4_virtio_blk.rs tests/m5_virtio_net.rs tests/m6_smp.rs; then
+        echo "an M4-M6 test disables seccomp"; ok=1
+    fi
+    for id in $failed_ids; do
+        case $id in AC-4.*|AC-5.*|AC-6.*) echo "$id did not pass"; ok=1 ;; esac
+    done
+    return $ok
+}
+
+# AC-7.6: every syscall each thread type allows (the common list plus its own) is
+# named in that thread's subsection of "## Seccomp allowlists" in notes/phase-2.md.
+allowlists_in_notes() {
+    local ok=0 kind heading sc
+    for kind in Main Vcpu Stdin; do
+        case $kind in
+            Main) heading="### main thread" ;;
+            Vcpu) heading="### vCPU threads" ;;
+            Stdin) heading="### stdin thread" ;;
+        esac
+        section=$(awk -v h="$heading" '
+            /^## / { in_allow = ($0 == "## Seccomp allowlists"); on = 0; next }
+            in_allow && /^### / { on = ($0 == h); next }
+            on { print }
+        ' notes/phase-2.md)
+        # Common entries come before `match kind`; the kind's own after `ThreadKind::<kind> =>`.
+        for sc in $(awk -v k="ThreadKind::$kind =>" '
+            /match kind/ { common = 0; done = 1 }
+            /let mut list/ { common = 1 }
+            index($0, k) { mine = 1; next }
+            /ThreadKind::[A-Za-z]+ =>/ { mine = 0 }
+            (common || mine) && match($0, /\(libc::SYS_[a-z0-9_]+/) { print substr($0, RSTART + 11, RLENGTH - 11) }
+        ' src/seccomp.rs); do
+            if grep -q "\`$sc\`" <<<"$section"; then
+                echo "$heading: $sc"
+            else
+                echo "$heading: $sc MISSING"; ok=1
+            fi
+        done
+    done
+    return $ok
 }
 
 # Ignored tests boot VMs (and, from M5, share one TAP), so they never run concurrently.
@@ -160,6 +232,18 @@ check AC-6.3 "--vcpus 4: LOC interrupts on all 4 CPUs" m6 ac_6_3_every_cpu_takes
 tap_check AC-6.4 "10 boots with 4 vCPUs + disk + TAP (each <= 30 s, exit 0)" m6 ac_6_4_ten_boots_with_disk_net_and_four_vcpus
 check AC-6.5 "--vcpus 4: reboot -f exits 0 within 10 s" m6 ac_6_5_reboot_with_four_vcpus_exits_within_10s
 tap_check AC-6.6 "all M4 and M5 tests pass with 4 vCPUs" m4_m5_with_vcpus 4
+
+echo "== M7 — Hardening =="
+m7() { itest m7_seccomp "$1"; }
+# The runtime test checks both `Seccomp: 2` and `NoNewPrivs: 1` on every thread.
+ac_7_1() { seccomp_source && m7 ac_7_1_every_thread_is_filtered; }
+ac_7_2() { no_new_privs_first && m7 ac_7_1_every_thread_is_filtered; }
+check AC-7.1 "filters only in seccomp.rs, one comment per syscall; every thread filtered" ac_7_1
+check AC-7.2 "PR_SET_NO_NEW_PRIVS before the first thread/filter; NoNewPrivs on all threads" ac_7_2
+check AC-7.3 "all M4, M5 and M6 criteria pass with seccomp enabled" m4_to_m6_with_seccomp
+check AC-7.4 "forbidden syscall on a vCPU kills the VMM with SIGSYS" m7 ac_7_4_forbidden_syscall_kills_vmm_with_sigsys
+check AC-7.5 "--no-seccomp warns on stderr and still boots" m7 ac_7_5_no_seccomp_warns_and_boots
+check AC-7.6 "notes/phase-2.md lists every allowed syscall per thread type" allowlists_in_notes
 
 if [ "$failed" -eq 0 ]; then echo "RESULT: PASS"; else echo "RESULT: FAIL"; fi
 exit "$failed"

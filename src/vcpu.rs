@@ -8,11 +8,13 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use kvm_ioctls::{VcpuExit, VcpuFd};
+use seccompiler::BpfProgram;
 
 use crate::devices::mmio_bus::MmioBus;
 use crate::devices::pio_bus::{PioAction, PioBus};
 use crate::error::{Error, Result};
 use crate::event_loop::VmExit;
+use crate::seccomp;
 
 /// Why the guest stopped running normally.
 #[derive(Debug, PartialEq, Eq)]
@@ -122,6 +124,21 @@ pub struct Shared {
     pub mmio: Arc<MmioBus>,
     pub stop: Arc<AtomicBool>,
     pub exit: Arc<VmExit>,
+    /// The vCPU seccomp filter; `None` with `--no-seccomp`.
+    pub seccomp: Option<Arc<BpfProgram>>,
+    /// Test only: vCPU 0 makes a forbidden syscall right after installing its filter.
+    pub seccomp_test_violation: bool,
+}
+
+/// Test only (`--seccomp-test-violation`): a syscall no VMM thread is allowed to make.
+fn seccomp_violation() {
+    // SAFETY: socket(2) takes no pointers; under the vCPU filter the kernel kills the
+    // process before it returns. Without a filter it creates a socket we close at once.
+    let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
+    if fd >= 0 {
+        // SAFETY: `fd` is the socket just created and owned by nothing else.
+        unsafe { libc::close(fd) };
+    }
 }
 
 /// Start vCPU `index` on its own thread, named `vcpu<index>`.
@@ -130,6 +147,16 @@ pub fn spawn(index: usize, mut vcpu: VcpuFd, shared: Shared) -> Result<JoinHandl
         .name(format!("vcpu{index}"))
         .spawn(move || {
             let _guard = ExitGuard(shared.exit.clone());
+            // Before the first KVM_RUN: nothing guest-controlled has been handled yet.
+            if let Some(filter) = &shared.seccomp {
+                if let Err(e) = seccomp::install(filter) {
+                    shared.exit.finish(Err(e));
+                    return;
+                }
+                if index == 0 && shared.seccomp_test_violation {
+                    seccomp_violation();
+                }
+            }
             let buses = Buses {
                 pio: &shared.pio,
                 mmio: &shared.mmio,
