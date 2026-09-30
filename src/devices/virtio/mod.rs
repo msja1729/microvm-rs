@@ -2,10 +2,12 @@
 //!
 //! - `queue` and `parse` are pure, guest-facing code over the `GuestMem` trait (no KVM).
 //! - `mmio` is the register interface the guest driver talks to.
-//! - `block` executes parsed requests against the host file.
+//! - `block` executes parsed requests against the host file; `net` moves frames
+//!   between the queues and a host TAP.
 
 pub mod block;
 pub mod mmio;
+pub mod net;
 pub mod parse;
 pub mod queue;
 

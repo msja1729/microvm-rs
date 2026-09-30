@@ -207,6 +207,17 @@ impl Queue {
             && range_in_memory(mem_size, self.used_ring, used_bytes)
     }
 
+    /// `true` if the driver has published a chain the device hasn't taken yet. Consumes
+    /// nothing; `pop` still does every check.
+    pub fn has_available<M: GuestMem + ?Sized>(&self, mem: &M) -> Result<bool, QueueError> {
+        let idx_addr = self
+            .avail_ring
+            .checked_add(RING_IDX_OFFSET)
+            .ok_or(QueueError::Broken)?;
+        let avail_idx = read_u16(mem, idx_addr).map_err(|_| QueueError::Broken)?;
+        Ok(avail_idx != self.next_avail)
+    }
+
     /// Take the next available descriptor-chain head, if the driver published one.
     pub fn pop<M: GuestMem + ?Sized>(&mut self, mem: &M) -> Result<Option<u16>, QueueError> {
         if self.size == 0 {

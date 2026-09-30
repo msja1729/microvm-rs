@@ -173,6 +173,106 @@ pub fn parse_blk_request<M: GuestMem + ?Sized>(
     })
 }
 
+/// Size of the virtio-net header in front of every frame (`virtio_net_hdr_v1`, 12 bytes
+/// because `VIRTIO_F_VERSION_1` is always negotiated).
+pub const NET_HDR_SIZE: usize = 12;
+/// Largest Ethernet frame (without the header) a TX chain may carry.
+pub const MAX_FRAME_SIZE: usize = 65_550;
+/// Longest TX chain accepted: header plus the largest frame. Bounds every buffer the
+/// guest can make the VMM fill.
+pub const MAX_TX_LEN: usize = NET_HDR_SIZE + MAX_FRAME_SIZE;
+
+/// Why a virtio-net chain was rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetError {
+    /// A TX descriptor is device-writable, or an RX descriptor is device-readable.
+    BadDirection,
+    /// A buffer lies outside guest RAM.
+    OutsideMemory,
+    /// A TX chain is shorter than the header or longer than `MAX_TX_LEN`.
+    BadLength,
+}
+
+/// A TX chain that passed every check: its buffers, in order, and their total length
+/// (in `NET_HDR_SIZE..=MAX_TX_LEN`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TxFrame {
+    pub data: Vec<DataRange>,
+    pub len: usize,
+}
+
+/// Parse a virtio-net TX chain: every descriptor device-readable and inside RAM, total
+/// length between the 12-byte header and `MAX_TX_LEN` (summed without overflow).
+pub fn parse_net_tx<M: GuestMem + ?Sized>(
+    chain: &[ChainDesc],
+    mem: &M,
+) -> Result<TxFrame, NetError> {
+    let mem_size = mem.size();
+    let mut data = Vec::with_capacity(chain.len());
+    let mut total: u64 = 0;
+    for desc in chain {
+        if desc.writable {
+            return Err(NetError::BadDirection);
+        }
+        if !range_in_memory(mem_size, desc.addr, u64::from(desc.len)) {
+            return Err(NetError::OutsideMemory);
+        }
+        total = total
+            .checked_add(u64::from(desc.len))
+            .ok_or(NetError::BadLength)?;
+        if total > MAX_TX_LEN as u64 {
+            return Err(NetError::BadLength);
+        }
+        data.push(DataRange {
+            addr: desc.addr,
+            len: desc.len,
+        });
+    }
+    if total < NET_HDR_SIZE as u64 {
+        return Err(NetError::BadLength);
+    }
+    Ok(TxFrame {
+        data,
+        len: total as usize,
+    })
+}
+
+/// Overwrite the virtio-net header at the start of a TX frame with zeros, so no
+/// guest-supplied header field (GSO type, checksum offsets, ...) reaches the host
+/// kernel. `buf` shorter than the header is zeroed entirely.
+pub fn zero_vnet_header(buf: &mut [u8]) {
+    for byte in buf.iter_mut().take(NET_HDR_SIZE) {
+        *byte = 0;
+    }
+}
+
+/// Parse a virtio-net RX chain: every descriptor device-writable and inside RAM.
+/// Returns the buffers in order and their total capacity (which may be smaller than a
+/// frame; the device then drops the frame).
+pub fn parse_net_rx<M: GuestMem + ?Sized>(
+    chain: &[ChainDesc],
+    mem: &M,
+) -> Result<(Vec<DataRange>, u64), NetError> {
+    let mem_size = mem.size();
+    let mut data = Vec::with_capacity(chain.len());
+    let mut total: u64 = 0;
+    for desc in chain {
+        if !desc.writable {
+            return Err(NetError::BadDirection);
+        }
+        if !range_in_memory(mem_size, desc.addr, u64::from(desc.len)) {
+            return Err(NetError::OutsideMemory);
+        }
+        // At most 256 descriptors of < 4 GiB each: cannot overflow u64.
+        total = total.saturating_add(u64::from(desc.len));
+        data.push(DataRange {
+            addr: desc.addr,
+            len: desc.len,
+        });
+    }
+    Ok((data, total))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,5 +464,64 @@ mod tests {
             parse_blk_request(&c, &mem, CAPACITY),
             Err(BlkError::OutsideMemory)
         );
+    }
+
+    #[test]
+    fn net_tx_length_bounds() {
+        let mem = VecMem::new(0x2_0000);
+        let tx = |len: u32| parse_net_tx(&[d(0x100, len, false)], &mem);
+        assert_eq!(tx(11), Err(NetError::BadLength));
+        assert_eq!(tx(12).expect("header only").len, 12);
+        assert_eq!(tx(65_562).expect("maximum").len, 65_562);
+        assert_eq!(tx(65_563), Err(NetError::BadLength));
+        assert_eq!(parse_net_tx(&[], &mem), Err(NetError::BadLength));
+        // Split across descriptors, the limit applies to the sum.
+        let c = [d(0x100, 60_000, false), d(0x100, 5_563, false)];
+        assert_eq!(parse_net_tx(&c, &mem), Err(NetError::BadLength));
+        let c = [d(0x100, 6, false), d(0x200, 6, false), d(0x300, 100, false)];
+        let frame = parse_net_tx(&c, &mem).expect("split header");
+        assert_eq!(frame.len, 112);
+        assert_eq!(frame.data.len(), 3);
+        // Many huge descriptors: the running check stops before the sum could overflow.
+        let huge = vec![d(0, u32::MAX, false); 256];
+        assert_eq!(
+            parse_net_tx(&huge, &VecMem::new(16)),
+            Err(NetError::OutsideMemory)
+        );
+    }
+
+    #[test]
+    fn net_tx_rejects_writable_and_out_of_memory() {
+        let mem = VecMem::new(0x1000);
+        let c = [d(0x100, 12, false), d(0x200, 60, true)];
+        assert_eq!(parse_net_tx(&c, &mem), Err(NetError::BadDirection));
+        let c = [d(0xff0, 32, false)];
+        assert_eq!(parse_net_tx(&c, &mem), Err(NetError::OutsideMemory));
+        let c = [d(u64::MAX, 32, false)];
+        assert_eq!(parse_net_tx(&c, &mem), Err(NetError::OutsideMemory));
+    }
+
+    #[test]
+    fn vnet_header_is_zeroed() {
+        let mut frame = [0xffu8; 40];
+        zero_vnet_header(&mut frame);
+        assert!(frame[..12].iter().all(|&b| b == 0));
+        assert!(frame[12..].iter().all(|&b| b == 0xff));
+        let mut short = [0xffu8; 5];
+        zero_vnet_header(&mut short);
+        assert_eq!(short, [0; 5]);
+    }
+
+    #[test]
+    fn net_rx_requires_writable_buffers_in_memory() {
+        let mem = VecMem::new(0x1000);
+        let c = [d(0x100, 12, true), d(0xf00, 1518, true)];
+        assert_eq!(parse_net_rx(&c, &mem), Err(NetError::OutsideMemory));
+        let c = [d(0x100, 12, true), d(0x200, 100, true)];
+        let (ranges, total) = parse_net_rx(&c, &mem).expect("valid RX chain");
+        assert_eq!(ranges.len(), 2);
+        assert_eq!(total, 112);
+        let c = [d(0x100, 12, true), d(0x200, 100, false)];
+        assert_eq!(parse_net_rx(&c, &mem), Err(NetError::BadDirection));
     }
 }

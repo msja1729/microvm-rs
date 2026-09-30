@@ -48,6 +48,8 @@ pub enum Error {
     Cmdline(String),
     #[error("cannot use disk image {}: {reason}", path.display())]
     Disk { path: PathBuf, reason: String },
+    #[error("cannot use TAP interface {name}: {reason}")]
+    Tap { name: String, reason: String },
 
     // ---- Unexpected VM exits and internal errors (exit code 1) ----
     #[error("KVM ioctl {op} failed: {source}")]
@@ -91,7 +93,8 @@ impl Error {
             | Error::InitrdRead { .. }
             | Error::InitrdTooLarge { .. }
             | Error::Cmdline(_)
-            | Error::Disk { .. } => 2,
+            | Error::Disk { .. }
+            | Error::Tap { .. } => 2,
             Error::Kvm { .. }
             | Error::GuestMemory(_)
             | Error::SerialOutput(_)

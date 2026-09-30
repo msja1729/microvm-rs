@@ -1,13 +1,16 @@
 //! The main thread's event loop: virtio queue notifications (ioeventfds) and the VM
 //! exit signal. Built on `event-manager` (epoll).
 
+use std::io::{Read, Write};
+use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 
 use event_manager::{EventManager, EventOps, EventSet, Events, MutEventSubscriber};
 use log::warn;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
-use crate::devices::virtio::mmio::VirtioMmio;
+use crate::devices::virtio::mmio::SharedTransport;
+use crate::devices::virtio::net::{Net, RX_QUEUE};
 use crate::devices::virtio::VirtioDevice;
 use crate::error::{Error, Result};
 
@@ -77,18 +80,14 @@ impl MutEventSubscriber for ExitSubscriber {
 
 /// Serves the queue notifications of one virtio device. Event data = queue index.
 pub struct QueueSubscriber<D: VirtioDevice> {
-    transport: Arc<Mutex<VirtioMmio<D>>>,
+    transport: SharedTransport<D>,
     queue_evts: Vec<EventFd>,
     exit: Arc<VmExit>,
 }
 
 impl<D: VirtioDevice> QueueSubscriber<D> {
     /// `queue_evts[i]` must be the ioeventfd registered for queue `i`.
-    pub fn new(
-        transport: Arc<Mutex<VirtioMmio<D>>>,
-        queue_evts: Vec<EventFd>,
-        exit: Arc<VmExit>,
-    ) -> Self {
+    pub fn new(transport: SharedTransport<D>, queue_evts: Vec<EventFd>, exit: Arc<VmExit>) -> Self {
         Self {
             transport,
             queue_evts,
@@ -120,6 +119,105 @@ impl<D: VirtioDevice> MutEventSubscriber for QueueSubscriber<D> {
             Err(_) => self
                 .exit
                 .finish(Err(Error::LockPoisoned("virtio transport"))),
+        }
+    }
+}
+
+/// Event data for the TAP descriptor (queue eventfds use their queue index).
+const TAP_EVENT: u32 = 2;
+
+/// Serves a virtio-net device: RX/TX queue notifications and a readable TAP.
+///
+/// The TAP is watched only while the RX queue may have buffers. epoll is level-
+/// triggered, so watching a readable TAP with nowhere to put its frames would spin;
+/// when an RX pass ends starved (or the device isn't running yet) the TAP is dropped
+/// from the interest list, and it is added back when the guest notifies the RX queue
+/// (which it does after adding buffers) and that RX pass isn't starved.
+pub struct NetSubscriber<T: Read + Write + Send> {
+    transport: SharedTransport<Net<T>>,
+    queue_evts: Vec<EventFd>,
+    /// Owned by the `Net` device inside `transport`, which this subscriber keeps alive.
+    tap_fd: RawFd,
+    tap_watched: bool,
+    exit: Arc<VmExit>,
+}
+
+impl<T: Read + Write + Send> NetSubscriber<T> {
+    /// `queue_evts[i]` must be the ioeventfd of queue `i`; `tap_fd` the device's TAP.
+    pub fn new(
+        transport: SharedTransport<Net<T>>,
+        queue_evts: Vec<EventFd>,
+        tap_fd: RawFd,
+        exit: Arc<VmExit>,
+    ) -> Self {
+        Self {
+            transport,
+            queue_evts,
+            tap_fd,
+            tap_watched: false,
+            exit,
+        }
+    }
+
+    fn set_tap_watched(&mut self, ops: &mut EventOps, watch: bool) {
+        if watch == self.tap_watched {
+            return;
+        }
+        let events = Events::with_data_raw(self.tap_fd, TAP_EVENT, EventSet::IN);
+        let result = if watch {
+            ops.add(events)
+        } else {
+            ops.remove(events)
+        };
+        match result {
+            Ok(()) => self.tap_watched = watch,
+            Err(e) => self
+                .exit
+                .finish(Err(Error::EventLoop(format!("update TAP interest: {e}")))),
+        }
+    }
+}
+
+impl<T: Read + Write + Send> MutEventSubscriber for NetSubscriber<T> {
+    fn init(&mut self, ops: &mut EventOps) {
+        for (index, evt) in self.queue_evts.iter().enumerate() {
+            let data = u32::try_from(index).unwrap_or(u32::MAX);
+            if let Err(e) = ops.add(Events::with_data(evt, data, EventSet::IN)) {
+                self.exit
+                    .finish(Err(Error::EventLoop(format!("watch queue eventfd: {e}"))));
+            }
+        }
+        self.set_tap_watched(ops, true);
+    }
+
+    fn process(&mut self, events: Events, ops: &mut EventOps) {
+        let data = events.data();
+        let queue = match data {
+            TAP_EVENT => RX_QUEUE,
+            index => {
+                let Some(evt) = self.queue_evts.get(index as usize) else {
+                    return;
+                };
+                let _ = evt.read();
+                index as usize
+            }
+        };
+        let (active, starved) = match self.transport.lock() {
+            Ok(mut transport) => {
+                transport.process_queue(queue);
+                (transport.is_active(), transport.device().rx_starved())
+            }
+            Err(_) => {
+                self.exit
+                    .finish(Err(Error::LockPoisoned("virtio transport")));
+                return;
+            }
+        };
+        // An RX notification means the guest added buffers; a TAP event means frames
+        // arrived. Either way the RX pass just ran: keep watching the TAP only if the
+        // device is running and the pass did not run out of guest buffers.
+        if queue == RX_QUEUE {
+            self.set_tap_watched(ops, active && !starved);
         }
     }
 }

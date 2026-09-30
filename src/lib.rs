@@ -27,7 +27,7 @@ pub use error::{Error, Result};
 
 use arch::x86_64::{
     boot_params, regs, BLK_IRQ, BLK_MMIO_BASE, BOOT_PARAMS_START, CMDLINE_MAX_SIZE, CMDLINE_START,
-    MMIO_WINDOW_SIZE,
+    MMIO_WINDOW_SIZE, NET_IRQ, NET_MMIO_BASE,
 };
 use devices::i8042::{I8042, I8042_BASE, I8042_LEN};
 use devices::mmio_bus::MmioBus;
@@ -36,6 +36,7 @@ use devices::serial::{
     EventFdTrigger, NoopTrigger, SerialDevice, SharedSerial, COM1_BASE, COM1_IRQ, COM1_LEN,
 };
 use devices::virtio::block::Block;
+use devices::virtio::net::{Net, DEFAULT_MAC};
 use devices::virtio::parse::SECTOR_SIZE;
 use devices::virtio::GuestRam;
 use event_manager::SubscriberOps;
@@ -128,6 +129,10 @@ pub struct BootConfig {
     pub disk: Option<PathBuf>,
     /// Open the disk read-only and advertise `VIRTIO_BLK_F_RO`.
     pub disk_ro: bool,
+    /// Existing host TAP interface backing the virtio-net device, if any.
+    pub tap: Option<String>,
+    /// Guest MAC address; `DEFAULT_MAC` when `None`.
+    pub guest_mac: Option<[u8; 6]>,
 }
 
 /// Smallest guest RAM accepted when booting Linux.
@@ -177,10 +182,13 @@ fn virtio_mmio_param(base: u64, irq: u32) -> String {
 
 /// The user's command line followed by the entries for the configured devices. The
 /// length limit applies to this final string.
-fn final_cmdline(user: &str, has_disk: bool) -> Result<String> {
+fn final_cmdline(user: &str, has_disk: bool, has_net: bool) -> Result<String> {
     let mut parts = vec![user.to_owned()];
     if has_disk {
         parts.push(virtio_mmio_param(BLK_MMIO_BASE, BLK_IRQ));
+    }
+    if has_net {
+        parts.push(virtio_mmio_param(NET_MMIO_BASE, NET_IRQ));
     }
     parts.retain(|p| !p.is_empty());
     let cmdline = parts.join(" ");
@@ -206,7 +214,11 @@ pub fn run_boot(config: &BootConfig) -> Result<()> {
         Some(path) => Some(open_disk(path, config.disk_ro)?),
         None => None,
     };
-    let cmdline_str = final_cmdline(&config.cmdline, disk.is_some())?;
+    let tap = match &config.tap {
+        Some(name) => Some(devices::tap::open(name)?),
+        None => None,
+    };
+    let cmdline_str = final_cmdline(&config.cmdline, disk.is_some(), tap.is_some())?;
 
     let vm = vm::create(&config.kvm_device, config.mem_mib, BOOT_MIN_MEM_MIB)?;
     // The irqchip must exist before the vCPU is created.
@@ -275,6 +287,20 @@ pub fn run_boot(config: &BootConfig) -> Result<()> {
             exit.clone(),
         )));
     }
+    if let Some(tap) = tap {
+        use std::os::unix::io::AsRawFd;
+        let tap_fd = tap.as_raw_fd();
+        let ram = GuestRam::new(vm.memory.clone(), mem_size);
+        let net = Net::new(tap, config.guest_mac.unwrap_or(DEFAULT_MAC));
+        let (transport, queue_evts) =
+            vm.attach_virtio(&mut mmio, NET_MMIO_BASE, NET_IRQ, net, ram)?;
+        events.add_subscriber(Box::new(event_loop::NetSubscriber::new(
+            transport,
+            queue_evts,
+            tap_fd,
+            exit.clone(),
+        )));
+    }
 
     terminal::install_signal_handlers()?;
     vcpu::install_kick_handler()?;
@@ -303,16 +329,28 @@ mod tests {
     #[test]
     fn cmdline_gets_virtio_entry_only_with_a_disk() {
         assert_eq!(
-            final_cmdline("console=ttyS0", false).expect("ok"),
+            final_cmdline("console=ttyS0", false, false).expect("ok"),
             "console=ttyS0"
         );
         assert_eq!(
-            final_cmdline("console=ttyS0", true).expect("ok"),
+            final_cmdline("console=ttyS0", true, false).expect("ok"),
             "console=ttyS0 virtio_mmio.device=4K@0xd0000000:5"
         );
         assert_eq!(
-            final_cmdline("", true).expect("ok"),
+            final_cmdline("", true, false).expect("ok"),
             "virtio_mmio.device=4K@0xd0000000:5"
+        );
+    }
+
+    #[test]
+    fn cmdline_gets_net_entry_after_disk() {
+        assert_eq!(
+            final_cmdline("c", true, true).expect("ok"),
+            "c virtio_mmio.device=4K@0xd0000000:5 virtio_mmio.device=4K@0xd0001000:6"
+        );
+        assert_eq!(
+            final_cmdline("c", false, true).expect("ok"),
+            "c virtio_mmio.device=4K@0xd0001000:6"
         );
     }
 
@@ -320,13 +358,13 @@ mod tests {
     fn cmdline_limit_applies_to_final_string() {
         let entry_len = " virtio_mmio.device=4K@0xd0000000:5".len();
         let fits = "a".repeat(CMDLINE_MAX_SIZE - 1 - entry_len);
-        assert!(final_cmdline(&fits, true).is_ok());
+        assert!(final_cmdline(&fits, true, false).is_ok());
         let too_long = "a".repeat(CMDLINE_MAX_SIZE - entry_len);
         assert!(matches!(
-            final_cmdline(&too_long, true),
+            final_cmdline(&too_long, true, false),
             Err(Error::Cmdline(_))
         ));
-        assert!(final_cmdline(&too_long, false).is_ok());
+        assert!(final_cmdline(&too_long, false, false).is_ok());
     }
 
     #[test]

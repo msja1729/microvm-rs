@@ -130,3 +130,35 @@ Choices made inside the spec. Format: question → options → choice → why. D
 - **Options:** report only on normal returns; also report from a drop guard.
 - **Chose:** a drop guard records "vCPU thread ended unexpectedly" if the thread ends without an outcome (e.g. a panic). `VmExit::finish` is first-writer-wins, so the guard is harmless on normal paths. `vcpu::run` gains `GuestStop::Stopped` for "the VMM asked me to stop".
 - **Why:** otherwise a panicking vCPU thread would never wake the event loop, and the VMM would hang.
+
+## M5 — virtio-net
+
+### D26. RX flow control
+- **Options:** read a frame from the TAP and then look for a chain (and hold or drop the frame if there is none); check for a chain first without consuming it.
+- **Chose:** `Queue::has_available` peeks at `avail.idx`. A frame is read from the TAP only when a chain is waiting, so frames queue in the host kernel, not in the VMM. After every RX pass (from an RX notification or a readable TAP), the event loop watches the TAP only if the device is active and the pass did not run out of guest buffers.
+- **Why:** this implements D7 without a pending-frame buffer and without dropping frames just because the guest is briefly out of buffers. One rule for both events keeps the level-triggered epoll from spinning.
+
+### D27. The RX virtio-net header from the TAP
+- **Options:** pass the TAP's header through unchanged; zero it; set `num_buffers`.
+- **Chose:** keep the TAP's header and set `num_buffers` (bytes 10–11) to 1.
+- **Why:** the host kernel only fills the first 10 bytes of a 12-byte header, so `num_buffers` would otherwise be stale buffer contents. Without `MRG_RXBUF` the virtio spec requires it to be 1. With offloads off (`TUNSETOFFLOAD 0`) the rest of the header carries no GSO/checksum requests.
+
+### D28. Testing the net device without a TAP
+- **Options:** only test the pure parsers; make `Net` generic over its backend.
+- **Chose:** `Net<T: Read + Write + Send>`, used with `Tap` in production and a `FakeTap` in unit tests.
+- **Why:** the RX starvation, frame-drop and TX-drop paths can be unit-tested without root or a real interface.
+
+### D29. `--guest-mac` default and parser location
+- **Options:** clap `default_value` plus `requires = "tap"`; no clap default, with the default applied in `run_boot`.
+- **Chose:** `Option<[u8; 6]>` with no clap default; `DEFAULT_MAC` is applied in `run_boot`. The parser `parse_mac` lives in `net.rs` and is wired through clap's `value_parser` in `main.rs`.
+- **Why:** a clap default makes `requires` harder to reason about. Keeping the parser in the library makes it unit-testable next to the other net code.
+
+### D30. `struct ifreq`
+- **Options:** `libc::ifreq` (union field access); a local 40-byte `#[repr(C)]` struct with just the name and flags.
+- **Chose:** the local struct, with unit tests that pin its size, the flags offset and the three ioctl numbers against the Linux header values.
+- **Why:** it needs no unsafe union access, and the layout is checked by tests.
+
+### D31. `setup-tap.sh` with a foreign `vmtap0`
+- **Options:** delete and recreate it; fail with a message.
+- **Chose:** fail and print the `ip link delete` command.
+- **Why:** a script run with sudo should not silently delete an interface someone else created.

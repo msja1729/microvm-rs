@@ -36,10 +36,13 @@ pub const MMIO_WINDOW_SIZE: u64 = 0x1000;
 /// virtio-blk slot: MMIO window and GSI (IOAPIC pin / PIC line).
 pub const BLK_MMIO_BASE: u64 = MMIO_BASE;
 pub const BLK_IRQ: u32 = 5;
+/// virtio-net slot: MMIO window and GSI.
+pub const NET_MMIO_BASE: u64 = MMIO_BASE + MMIO_WINDOW_SIZE;
+pub const NET_IRQ: u32 = 6;
 /// Guest-physical address of the in-kernel IOAPIC; MMIO windows must stay below it.
 pub const IOAPIC_ADDRESS: u64 = 0xfec0_0000;
 
 // The MMIO windows are never RAM (so e820 needs no change): they start above the
 // largest RAM size the VMM accepts and end below the IOAPIC.
 const _: () = assert!(MMIO_BASE >= crate::vm::MAX_MEM_MIB << 20);
-const _: () = assert!(MMIO_BASE + 2 * MMIO_WINDOW_SIZE <= IOAPIC_ADDRESS);
+const _: () = assert!(NET_MMIO_BASE + MMIO_WINDOW_SIZE <= IOAPIC_ADDRESS);

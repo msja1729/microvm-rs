@@ -86,6 +86,24 @@ unit_tests() {
     grep -q "test result: ok. $n passed" <<<"$out"
 }
 
+# The TAP precondition: vmtap0 exists, is owned by us, and has 172.16.0.1/24.
+tap_precondition() {
+    [ -e /sys/class/net/vmtap0 ] \
+        && [ "$(cat /sys/class/net/vmtap0/owner 2>/dev/null)" = "$(id -u)" ] \
+        && ip -4 addr show vmtap0 2>/dev/null | grep -q 'inet 172\.16\.0\.1/24'
+}
+
+# tap_check <id> <description> <command...>: like `check`, but without the TAP
+# precondition it prints SKIP and counts as a failure.
+tap_check() {
+    if tap_precondition; then
+        check "$@"
+    else
+        printf 'SKIP  %-7s %s (run: sudo scripts/setup-tap.sh)\n' "$1" "$2"
+        failed=1
+    fi
+}
+
 # Ignored tests boot VMs (and, from M5, share one TAP), so they never run concurrently.
 itest() { cargo test --test "$1" -- --include-ignored --exact "$2" --test-threads=1; }
 
@@ -118,6 +136,15 @@ check AC-4.9 "unit tests: OUT on RO -> IOERR; GET_ID/unknown -> UNSUPP" \
     unit_tests 2 \
     devices::virtio::block::tests::out_on_read_only_device_is_ioerr_and_file_unchanged \
     devices::virtio::block::tests::get_id_and_unknown_types_are_unsupp
+
+echo "== M5 — virtio-net =="
+m5() { itest m5_virtio_net "$1"; }
+check AC-5.1 "kernel config has VIRTIO_NET=y" kernel_config VIRTIO_NET
+tap_check AC-5.2 "guest eth0 has MAC 06:00:ac:10:00:02" m5 ac_5_2_guest_sees_default_mac
+tap_check AC-5.3 "guest pings 172.16.0.1 with 0% loss" m5 ac_5_3_guest_pings_host
+tap_check AC-5.4 "host pings 172.16.0.2 with 0% loss" m5 ac_5_4_host_pings_guest
+tap_check AC-5.5 "16 MiB HTTP download: guest and host sha256 match" m5 ac_5_5_bulk_download_matches_host_checksum
+check AC-5.6 "bad --tap / --guest-mac arguments -> exit 2" m5 ac_5_6_bad_net_arguments_exit_2
 
 if [ "$failed" -eq 0 ]; then echo "RESULT: PASS"; else echo "RESULT: FAIL"; fi
 exit "$failed"

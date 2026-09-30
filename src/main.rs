@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use kvm_hello::devices::virtio::net::parse_mac;
 use kvm_hello::{run_boot, run_raw, BootConfig, RawConfig, RawMode, DEFAULT_CMDLINE};
 
 #[derive(Parser)]
@@ -62,6 +63,12 @@ enum Command {
         /// Attach the disk read-only.
         #[arg(long, requires = "disk")]
         disk_ro: bool,
+        /// Existing host TAP interface for the virtio-net device (eth0 in the guest).
+        #[arg(long)]
+        tap: Option<String>,
+        /// Guest MAC address [default: 06:00:ac:10:00:02].
+        #[arg(long, requires = "tap", value_parser = parse_mac)]
+        guest_mac: Option<[u8; 6]>,
     },
 }
 
@@ -100,6 +107,8 @@ fn main() -> ExitCode {
             cmdline,
             disk,
             disk_ro,
+            tap,
+            guest_mac,
         } => run_boot(&BootConfig {
             kvm_device: cli.kvm_device,
             kernel,
@@ -108,6 +117,8 @@ fn main() -> ExitCode {
             cmdline,
             disk,
             disk_ro,
+            tap,
+            guest_mac,
         }),
     };
 
