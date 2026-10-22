@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kvm-hello Project Details</title>
+<style>
+  /* Layout: one reading column, each chapter = one big picture + a few lines. Same look as Level 0. */
+  :root {
+    --ink: #1d2433;
+    --muted: #5b6475;
+    --line: #d6dbe4;
+    --paper: #ffffff;
+    --soft: #f4f6fa;
+    --blue: #2f6fdf;
+    --blue-soft: #e3ecfc;
+    --green: #1f9d6b;
+    --green-soft: #def5ea;
+    --orange: #e07b1f;
+    --orange-soft: #fdebd9;
+    --purple: #7a4fd6;
+    --purple-soft: #ece4fb;
+    --red: #d24545;
+    --red-soft: #fbe3e3;
+    --code-bg: #1d2433;
+    --code-fg: #e8ecf4;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e6e9f0; --muted: #a3abbb; --line: #39414f; --paper: #161a22; --soft: #1f2530;
+      --blue: #78a6ff; --blue-soft: #1f2d4a; --green: #4fd09b; --green-soft: #173528;
+      --orange: #f2a35a; --orange-soft: #3a2a19; --purple: #b195f5; --purple-soft: #2b2342;
+      --red: #f07f7f; --red-soft: #3d1f22; --code-bg: #0e1117; --code-fg: #e8ecf4;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #e6e9f0; --muted: #a3abbb; --line: #39414f; --paper: #161a22; --soft: #1f2530;
+    --blue: #78a6ff; --blue-soft: #1f2d4a; --green: #4fd09b; --green-soft: #173528;
+    --orange: #f2a35a; --orange-soft: #3a2a19; --purple: #b195f5; --purple-soft: #2b2342;
+    --red: #f07f7f; --red-soft: #3d1f22; --code-bg: #0e1117; --code-fg: #e8ecf4;
+    color-scheme: dark;
+  }
+  @page { size: A4; margin: 14mm 14mm 16mm; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 15px/1.6 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 0 16px 40px; }
+  h1 { font-size: 34px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.02em; text-wrap: balance; }
+  h2 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; text-wrap: balance; }
+  h3 { font-size: 17px; margin: 22px 0 6px; }
+  p { margin: 6px 0 10px; }
+  code { font-family: var(--mono); font-size: 13px; background: var(--soft); padding: 1px 5px; border-radius: 4px; font-variant-ligatures: none; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 14px; font-size: 14px; break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); }
+  td.mono { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  svg { display: block; width: 100%; height: auto; margin: 10px 0 6px; }
+  svg text { font-family: "Segoe UI", system-ui, sans-serif; fill: var(--ink); }
+  svg .mono { font-family: var(--mono); }
+  svg .muted { fill: var(--muted); }
+  svg .white { fill: #fff; }
+  svg .b { font-weight: 700; }
+  .f-paper { fill: var(--paper); } .f-soft { fill: var(--soft); }
+  .f-blue { fill: var(--blue); } .f-blue-soft { fill: var(--blue-soft); }
+  .f-green { fill: var(--green); } .f-green-soft { fill: var(--green-soft); }
+  .f-orange { fill: var(--orange); } .f-orange-soft { fill: var(--orange-soft); }
+  .f-purple { fill: var(--purple); } .f-purple-soft { fill: var(--purple-soft); }
+  .f-red { fill: var(--red); } .f-red-soft { fill: var(--red-soft); }
+  .s-line { stroke: var(--line); } .s-ink { stroke: var(--ink); } .s-muted { stroke: var(--muted); }
+  .s-blue { stroke: var(--blue); } .s-green { stroke: var(--green); } .s-orange { stroke: var(--orange); }
+  .s-purple { stroke: var(--purple); } .s-red { stroke: var(--red); }
+  .cover { padding-block: 48px 24px; }
+  .eyebrow { color: var(--blue); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; font-size: 13px; }
+  .lede { font-size: 18px; color: var(--muted); max-width: 640px; }
+  .chapter { break-before: page; padding-top: 28px; }
+  .num { display: inline-block; background: var(--blue); color: #fff; border-radius: 8px; padding: 2px 10px; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .big-idea { font-size: 19px; line-height: 1.45; border-left: 5px solid var(--blue); background: var(--blue-soft); padding: 12px 16px; border-radius: 0 10px 10px 0; margin: 12px 0 8px; break-inside: avoid; }
+  .box { border-radius: 10px; padding: 10px 14px; margin: 12px 0; break-inside: avoid; }
+  .repo { background: var(--green-soft); border: 1px solid var(--green); }
+  .repo::before { content: "IN THIS REPO"; display: block; font-size: 12px; font-weight: 800; letter-spacing: .1em; color: var(--green); margin-bottom: 2px; }
+  .trap { background: var(--orange-soft); border: 1px solid var(--orange); }
+  .trap::before { content: "COMMON MISTAKE"; display: block; font-size: 12px; font-weight: 800; letter-spacing: .1em; color: var(--orange); margin-bottom: 2px; }
+  .vm { background: var(--purple-soft); border: 1px solid var(--purple); }
+  .vm::before { content: "INTERVIEW ANGLE"; display: block; font-size: 12px; font-weight: 800; letter-spacing: .1em; color: var(--purple); margin-bottom: 2px; }
+  .quiz { background: var(--soft); border: 1px dashed var(--muted); }
+  .quiz::before { content: "CHECK YOURSELF"; display: block; font-size: 12px; font-weight: 800; letter-spacing: .1em; color: var(--muted); margin-bottom: 2px; }
+  .quiz ol { margin: 4px 0; padding-left: 22px; }
+  .toc { list-style: none; padding: 0; margin: 20px 0; }
+  .toc li { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 17px; display: flex; gap: 14px; }
+  .toc b { color: var(--blue); min-width: 26px; }
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: var(--soft); break-inside: avoid; min-width: 0; }
+  .card b { display: block; font-size: 16px; }
+  .card .who { color: var(--muted); font-size: 13px; }
+  .log { border-left: 3px solid var(--line); padding-left: 14px; margin: 14px 0; }
+  .log .date { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } h1 { font-size: 28px; } }
+  .caption { text-align: center; color: var(--muted); font-size: 13px; margin-top: -2px; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<!-- ============================ COVER ============================ -->
+<section class="cover">
+  <div class="eyebrow">Study notes · Project details</div>
+  <h1>What we are building, and why the world wants it</h1>
+  <p class="lede">A living file. Each chapter is one big picture and a few lines. New things about the project get added at the end, in the <b>Project log</b>.</p>
+
+  <ul class="toc">
+    <li><b>1</b><span>The project in one picture</span></li>
+    <li><b>2</b><span>The problem: strangers' code on your computer</span></li>
+    <li><b>3</b><span>Three ways to build walls</span></li>
+    <li><b>4</b><span>Who uses this in industry</span></li>
+    <li><b>5</b><span>Why now, and what they are chasing</span></li>
+    <li><b>6</b><span>Our road: Phase 1 → 2 → 3</span></li>
+    <li><b>7</b><span>The one rule: the guest is a stranger</span></li>
+    <li><b>8</b><span>Map of the code</span></li>
+    <li><b>9</b><span>Project log (we add to this)</span></li>
+  </ul>
+</section>
+
+<!-- ============================ 1 ============================ -->
+<section class="chapter">
+  <span class="num">1</span>
+  <h2>The project in one picture</h2>
+  <div class="big-idea">We wrote a program called <code>vmm</code> that makes a <b>pretend computer</b> inside your real computer. A whole Linux runs inside it and thinks it owns a real machine.</div>
+
+  <svg viewBox="0 0 760 400" role="img" aria-label="Layers: hardware, host Linux with KVM, our vmm process, guest Linux inside">
+    <!-- hardware -->
+    <rect x="20" y="330" width="720" height="54" rx="10" class="f-soft s-line" stroke-width="2"/>
+    <text x="380" y="355" text-anchor="middle" class="b" font-size="17">Real hardware</text>
+    <text x="380" y="374" text-anchor="middle" class="muted" font-size="13">CPU · RAM · disk · network card</text>
+    <!-- host kernel -->
+    <rect x="20" y="262" width="720" height="58" rx="10" class="f-blue-soft s-blue" stroke-width="2"/>
+    <text x="40" y="288" class="b" font-size="16">Host Linux kernel</text>
+    <text x="40" y="308" class="muted" font-size="13">(on your laptop: WSL2)</text>
+    <rect x="470" y="272" width="250" height="38" rx="8" class="f-blue"/>
+    <text x="595" y="296" text-anchor="middle" class="white b" font-size="15">KVM  ·  /dev/kvm</text>
+    <!-- vmm process -->
+    <rect x="20" y="20" width="460" height="230" rx="12" class="f-green-soft s-green" stroke-width="2"/>
+    <text x="40" y="46" class="b" font-size="16">Our program: vmm</text>
+    <text x="40" y="66" class="muted" font-size="13">a normal Rust process (no root)</text>
+    <!-- guest -->
+    <rect x="44" y="82" width="412" height="150" rx="10" class="f-purple-soft s-purple" stroke-width="2" stroke-dasharray="6 4"/>
+    <text x="64" y="108" class="b" font-size="16">Guest: a whole Linux</text>
+    <rect x="64" y="122" width="120" height="40" rx="6" class="f-paper s-purple" stroke-width="1.5"/>
+    <text x="124" y="147" text-anchor="middle" font-size="13">vCPU × 1–4</text>
+    <rect x="194" y="122" width="120" height="40" rx="6" class="f-paper s-purple" stroke-width="1.5"/>
+    <text x="254" y="147" text-anchor="middle" font-size="13">pretend RAM</text>
+    <rect x="324" y="122" width="116" height="40" rx="6" class="f-paper s-purple" stroke-width="1.5"/>
+    <text x="382" y="147" text-anchor="middle" font-size="13">disk · net</text>
+    <text x="64" y="192" class="mono" font-size="14">~ # ls /mnt</text>
+    <text x="64" y="214" class="mono muted" font-size="14">hello.txt</text>
+    <!-- other processes -->
+    <rect x="500" y="20" width="240" height="230" rx="12" class="f-soft s-line" stroke-width="2"/>
+    <text x="620" y="50" text-anchor="middle" class="muted" font-size="14">other host programs</text>
+    <text x="620" y="74" text-anchor="middle" class="muted" font-size="13">bash · cargo · editor</text>
+    <!-- arrow vmm <-> kvm -->
+    <path d="M300 250 L 300 262" class="s-ink" stroke-width="2"/>
+    <path d="M420 250 C 420 268, 520 262, 560 272" class="s-ink" stroke-width="2.5" fill="none" marker-end="url(#ah)"/>
+    <text x="440" y="246" class="b" font-size="13" text-anchor="end">ioctl("run my guest")</text>
+    <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="f-blue"/></marker></defs>
+  </svg>
+  <p class="caption">KVM does the fast part (running guest code on the real CPU). Our <code>vmm</code> does everything else.</p>
+
+  <h3>Who does what</h3>
+  <div class="scroll"><table>
+    <tr><th>Part</th><th>Job in one line</th></tr>
+    <tr><td><b>KVM</b> (in the host kernel)</td><td>Runs the guest's instructions directly on the real CPU, and stops when the guest touches something it can't handle.</td></tr>
+    <tr><td><b>vmm</b> (our Rust program)</td><td>Builds the pretend machine: memory, CPUs, disk, network, serial console. Answers whenever KVM stops.</td></tr>
+    <tr><td><b>Guest</b> (Linux 6.12)</td><td>An ordinary, unmodified Linux kernel and a BusyBox shell. It never knows it is pretend.</td></tr>
+  </table></div>
+
+  <div class="box vm">"VMM" means <b>Virtual Machine Monitor</b>. KVM is the <i>hypervisor</i> part inside the kernel; the VMM is the user-space program that drives it. QEMU, Firecracker, Cloud Hypervisor and crosvm are all VMMs that sit on top of KVM. Ours is a small Firecracker-style one.</div>
+</section>
+
+<!-- ============================ 2 ============================ -->
+<section class="chapter">
+  <span class="num">2</span>
+  <h2>The problem: strangers' code on your computer</h2>
+  <div class="big-idea">A cloud company runs code from <b>thousands of strangers</b> on the <b>same machine</b>. Any one of them might be an attacker. How do you keep each one in its own room?</div>
+
+  <svg viewBox="0 0 760 300" role="img" aria-label="One server shared by many customers, one of them hostile">
+    <rect x="20" y="20" width="720" height="210" rx="14" class="f-soft s-line" stroke-width="2"/>
+    <text x="40" y="48" class="b" font-size="16">One physical server</text>
+    <g>
+      <rect x="44"  y="70" width="150" height="130" rx="10" class="f-green-soft s-green" stroke-width="2"/>
+      <text x="119" y="128" text-anchor="middle" class="b" font-size="15">Customer A</text>
+      <text x="119" y="150" text-anchor="middle" class="muted" font-size="13">a website</text>
+      <rect x="216" y="70" width="150" height="130" rx="10" class="f-green-soft s-green" stroke-width="2"/>
+      <text x="291" y="128" text-anchor="middle" class="b" font-size="15">Customer B</text>
+      <text x="291" y="150" text-anchor="middle" class="muted" font-size="13">a bank job</text>
+      <rect x="388" y="70" width="150" height="130" rx="10" class="f-red-soft s-red" stroke-width="2"/>
+      <text x="463" y="128" text-anchor="middle" class="b" font-size="15">Customer C</text>
+      <text x="463" y="150" text-anchor="middle" class="muted" font-size="13">an attacker</text>
+      <rect x="560" y="70" width="156" height="130" rx="10" class="f-green-soft s-green" stroke-width="2"/>
+      <text x="638" y="128" text-anchor="middle" class="b" font-size="15">AI agent</text>
+      <text x="638" y="150" text-anchor="middle" class="muted" font-size="13">running code it just wrote</text>
+    </g>
+    <path d="M388 135 C 360 110, 330 110, 300 120" class="s-red" stroke-width="3" fill="none" stroke-dasharray="6 5" marker-end="url(#ahr)"/>
+    <defs><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="f-red"/></marker></defs>
+    <text x="380" y="270" text-anchor="middle" font-size="16"><tspan class="b">The wall between rooms must hold.</tspan> And rooms must be cheap and fast to build.</text>
+  </svg>
+
+  <h3>Three things everyone wants at once</h3>
+  <div class="scroll"><table>
+    <tr><th>Want</th><th>Why</th></tr>
+    <tr><td><b>Strong walls</b> (isolation)</td><td>If C breaks out, it can read A's and B's data. That ends a cloud business.</td></tr>
+    <tr><td><b>Fast start</b></td><td>Serverless functions start on demand. Users notice seconds of delay ("cold start").</td></tr>
+    <tr><td><b>Tiny size</b> (density)</td><td>More rooms per server = less hardware per customer = cheaper.</td></tr>
+  </table></div>
+  <p>The old tools gave you <b>two of the three</b>. The next page shows why.</p>
+</section>
+
+<!-- ============================ 3 ============================ -->
+<section class="chapter">
+  <span class="num">3</span>
+  <h2>Three ways to build walls</h2>
+
+  <svg viewBox="0 0 760 420" role="img" aria-label="Comparison of containers, classic VMs and microVMs">
+    <!-- column headers -->
+    <text x="135" y="30" text-anchor="middle" class="b" font-size="17">Containers</text>
+    <text x="135" y="50" text-anchor="middle" class="muted" font-size="13">Docker</text>
+    <text x="380" y="30" text-anchor="middle" class="b" font-size="17">Classic VM</text>
+    <text x="380" y="50" text-anchor="middle" class="muted" font-size="13">QEMU + KVM</text>
+    <text x="625" y="30" text-anchor="middle" class="b" font-size="17">MicroVM</text>
+    <text x="625" y="50" text-anchor="middle" class="muted" font-size="13">Firecracker · ours</text>
+
+    <!-- containers: apps share one kernel -->
+    <rect x="30" y="70" width="210" height="190" rx="10" class="f-soft s-line" stroke-width="2"/>
+    <rect x="45" y="85" width="55" height="80" rx="6" class="f-green-soft s-green"/>
+    <rect x="108" y="85" width="55" height="80" rx="6" class="f-green-soft s-green"/>
+    <rect x="171" y="85" width="55" height="80" rx="6" class="f-red-soft s-red"/>
+    <text x="135" y="130" text-anchor="middle" font-size="12" class="muted">apps</text>
+    <rect x="45" y="185" width="181" height="60" rx="6" class="f-blue-soft s-blue" stroke-width="2"/>
+    <text x="135" y="212" text-anchor="middle" class="b" font-size="13">ONE shared kernel</text>
+    <text x="135" y="232" text-anchor="middle" class="muted" font-size="12">wall = kernel rules</text>
+
+    <!-- classic VM: big guest with lots of devices -->
+    <rect x="275" y="70" width="210" height="190" rx="10" class="f-soft s-line" stroke-width="2"/>
+    <rect x="290" y="85" width="180" height="70" rx="6" class="f-purple-soft s-purple" stroke-width="2"/>
+    <text x="380" y="116" text-anchor="middle" class="b" font-size="13">guest has own kernel</text>
+    <text x="380" y="136" text-anchor="middle" class="muted" font-size="12">strong wall</text>
+    <rect x="290" y="165" width="180" height="80" rx="6" class="f-orange-soft s-orange" stroke-width="2"/>
+    <text x="380" y="186" text-anchor="middle" class="b" font-size="13">huge VMM</text>
+    <text x="380" y="204" text-anchor="middle" class="muted" font-size="11">floppy · USB · sound · VGA</text>
+    <text x="380" y="220" text-anchor="middle" class="muted" font-size="11">PCI · BIOS · hundreds more</text>
+    <text x="380" y="236" text-anchor="middle" class="muted" font-size="11">&gt; 1 million lines of C</text>
+
+    <!-- microVM -->
+    <rect x="520" y="70" width="210" height="190" rx="10" class="f-soft s-line" stroke-width="2"/>
+    <rect x="535" y="85" width="180" height="70" rx="6" class="f-purple-soft s-purple" stroke-width="2"/>
+    <text x="625" y="116" text-anchor="middle" class="b" font-size="13">guest has own kernel</text>
+    <text x="625" y="136" text-anchor="middle" class="muted" font-size="12">strong wall</text>
+    <rect x="535" y="165" width="180" height="80" rx="6" class="f-green-soft s-green" stroke-width="2"/>
+    <text x="625" y="190" text-anchor="middle" class="b" font-size="13">tiny VMM</text>
+    <text x="625" y="208" text-anchor="middle" class="muted" font-size="11">serial · disk · net · that's it</text>
+    <text x="625" y="226" text-anchor="middle" class="muted" font-size="11">memory-safe Rust</text>
+
+    <!-- score rows -->
+    <g font-size="14">
+      <text x="10" y="295" class="b">Wall</text>
+      <text x="10" y="335" class="b">Start</text>
+      <text x="10" y="375" class="b">Size</text>
+    </g>
+    <!-- containers -->
+    <rect x="70" y="282" width="60" height="18" rx="4" class="f-red"/><text x="140" y="296" font-size="13">weak</text>
+    <rect x="70" y="322" width="160" height="18" rx="4" class="f-green"/><text x="70" y="358" font-size="13" class="muted">ms</text>
+    <rect x="70" y="362" width="160" height="18" rx="4" class="f-green"/>
+    <!-- classic VM -->
+    <rect x="300" y="282" width="160" height="18" rx="4" class="f-green"/>
+    <rect x="300" y="322" width="50" height="18" rx="4" class="f-red"/><text x="360" y="336" font-size="13">seconds</text>
+    <rect x="300" y="362" width="50" height="18" rx="4" class="f-red"/><text x="360" y="376" font-size="13">heavy</text>
+    <!-- microVM -->
+    <rect x="545" y="282" width="160" height="18" rx="4" class="f-green"/>
+    <rect x="545" y="322" width="140" height="18" rx="4" class="f-green"/><text x="545" y="358" font-size="13" class="muted">~125 ms</text>
+    <rect x="545" y="362" width="140" height="18" rx="4" class="f-green"/>
+    <text x="380" y="410" text-anchor="middle" font-size="13" class="muted">Longer green bar = better. MicroVM numbers are Firecracker's published figures.</text>
+  </svg>
+
+  <div class="big-idea">The trick of a microVM: keep the <b>strong wall</b> of a real VM, but throw away every device a cloud server doesn't need. Less code = fewer places to break in, and faster boot.</div>
+
+  <div class="box trap">"A container is a small VM." No. A container is a normal process with kernel-enforced limits; every container shares the <b>same</b> host kernel. One kernel bug can break every wall at once. A VM gives each tenant its <b>own</b> kernel, and the only shared surface is KVM plus the VMM.</div>
+</section>
+
+<!-- ============================ 4 ============================ -->
+<section class="chapter">
+  <span class="num">4</span>
+  <h2>Who uses this in industry</h2>
+  <p>The same shape as our project (KVM + a small Rust VMM) is running in production at large scale.</p>
+
+  <div class="cards">
+    <div class="card"><b>Firecracker</b><span class="who">Amazon Web Services</span><p>Built for AWS Lambda and Fargate. Each function call runs in its own microVM. Open-sourced 2018. The model for our project.</p></div>
+    <div class="card"><b>Cloud Hypervisor</b><span class="who">Intel, Microsoft, others · Linux Foundation</span><p>A Rust VMM for modern cloud workloads. Shares the <code>rust-vmm</code> crates we use.</p></div>
+    <div class="card"><b>crosvm</b><span class="who">Google</span><p>Runs Linux apps on ChromeOS and protected VMs on Android. The original Rust VMM that Firecracker grew from.</p></div>
+    <div class="card"><b>Kata Containers</b><span class="who">OpenInfra</span><p>Looks like a container to Kubernetes, but each pod is secretly a microVM. Can use Firecracker or Cloud Hypervisor.</p></div>
+    <div class="card"><b>Fly.io and similar hosts</b><span class="who">app platforms</span><p>Run customers' apps as Firecracker microVMs around the world.</p></div>
+    <div class="card"><b>AI code sandboxes</b><span class="who">e.g. E2B and agent platforms</span><p>When an AI agent writes code and runs it, that code is untrusted. Many sandboxes put each run in a microVM.</p></div>
+  </div>
+
+  <div class="box repo">We build on the same <b>rust-vmm</b> crates these projects share: <code>kvm-ioctls</code>, <code>vm-memory</code>, <code>linux-loader</code>, <code>vm-superio</code>, <code>seccompiler</code>, <code>event-manager</code>. Learning this repo is learning their building blocks.</div>
+</section>
+
+<!-- ============================ 5 ============================ -->
+<section class="chapter">
+  <span class="num">5</span>
+  <h2>Why now, and what they are chasing</h2>
+
+  <svg viewBox="0 0 760 300" role="img" aria-label="Four forces pushing microVM adoption">
+    <g>
+      <rect x="20"  y="20" width="170" height="170" rx="12" class="f-blue-soft s-blue" stroke-width="2"/>
+      <text x="105" y="62" text-anchor="middle" class="b" font-size="16">Serverless</text>
+      <text x="105" y="92" text-anchor="middle" font-size="13">millions of tiny,</text>
+      <text x="105" y="110" text-anchor="middle" font-size="13">short jobs from</text>
+      <text x="105" y="128" text-anchor="middle" font-size="13">different customers</text>
+      <rect x="205" y="20" width="170" height="170" rx="12" class="f-orange-soft s-orange" stroke-width="2"/>
+      <text x="290" y="62" text-anchor="middle" class="b" font-size="16">AI agents</text>
+      <text x="290" y="92" text-anchor="middle" font-size="13">run code nobody</text>
+      <text x="290" y="110" text-anchor="middle" font-size="13">has reviewed,</text>
+      <text x="290" y="128" text-anchor="middle" font-size="13">thousands per minute</text>
+      <rect x="390" y="20" width="170" height="170" rx="12" class="f-green-soft s-green" stroke-width="2"/>
+      <text x="475" y="62" text-anchor="middle" class="b" font-size="16">Memory safety</text>
+      <text x="475" y="92" text-anchor="middle" font-size="13">most VMM escapes</text>
+      <text x="475" y="110" text-anchor="middle" font-size="13">were C memory bugs;</text>
+      <text x="475" y="128" text-anchor="middle" font-size="13">Rust removes a class</text>
+      <rect x="575" y="20" width="165" height="170" rx="12" class="f-purple-soft s-purple" stroke-width="2"/>
+      <text x="657" y="62" text-anchor="middle" class="b" font-size="16">Confidential</text>
+      <text x="657" y="92" text-anchor="middle" font-size="13">customers want</text>
+      <text x="657" y="110" text-anchor="middle" font-size="13">even the cloud</text>
+      <text x="657" y="128" text-anchor="middle" font-size="13">to be unable to look</text>
+    </g>
+    <path d="M105 190 L 105 230 L 657 230 L 657 190 M290 190 L290 230 M475 190 L475 230" class="s-muted" stroke-width="2" fill="none"/>
+    <path d="M380 230 L380 250" class="s-muted" stroke-width="2"/>
+    <rect x="180" y="250" width="400" height="40" rx="20" class="f-blue"/>
+    <text x="380" y="276" text-anchor="middle" class="white b" font-size="16">Small, fast, provably safe VMMs</text>
+  </svg>
+
+  <h3>What the industry is trying to achieve</h3>
+  <div class="scroll"><table>
+    <tr><th>Goal</th><th>How it shows up in our project</th></tr>
+    <tr><td>Smallest possible attack surface</td><td>Only serial, i8042 (for reboot), virtio-blk, virtio-net. No PCI, no ACPI, no BIOS.</td></tr>
+    <tr><td>Boot in a blink</td><td>We load the Linux kernel directly into guest RAM and jump in. No firmware step.</td></tr>
+    <tr><td>Assume the VMM itself might get hacked</td><td>M7: seccomp lets each thread make only the system calls it needs. Anything else kills the VMM.</td></tr>
+    <tr><td>Prove, don't hope</td><td>M8: Kani proves the guest-facing parsers can't panic or read out of bounds; a fuzzer throws millions of random inputs at them.</td></tr>
+    <tr><td>Hide the guest from the host</td><td>Phase 3 (not started): AMD SEV-SNP / Intel TDX encrypt guest RAM.</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================ 6 ============================ -->
+<section class="chapter">
+  <span class="num">6</span>
+  <h2>Our road: Phase 1 → 2 → 3</h2>
+
+  <svg viewBox="0 0 760 360" role="img" aria-label="Roadmap of milestones M1 to M8 and Phase 3">
+    <path d="M40 70 L 720 70" class="s-line" stroke-width="6" stroke-linecap="round"/>
+    <path d="M40 220 L 720 220" class="s-line" stroke-width="6" stroke-linecap="round"/>
+    <text x="40" y="34" class="b" font-size="15">Phase 1 · Boot a guest</text>
+    <text x="720" y="34" text-anchor="end" class="muted" font-size="13">done · tag phase-1-complete</text>
+    <g font-size="13">
+      <circle cx="120" cy="70" r="20" class="f-green"/><text x="120" y="75" text-anchor="middle" class="white b">M1</text>
+      <text x="120" y="112" text-anchor="middle" class="b">16-bit hello</text><text x="120" y="130" text-anchor="middle" class="muted">tiny guest prints</text>
+      <circle cx="350" cy="70" r="20" class="f-green"/><text x="350" y="75" text-anchor="middle" class="white b">M2</text>
+      <text x="350" y="112" text-anchor="middle" class="b">64-bit hello</text><text x="350" y="130" text-anchor="middle" class="muted">long mode, page tables</text>
+      <circle cx="580" cy="70" r="20" class="f-green"/><text x="580" y="75" text-anchor="middle" class="white b">M3</text>
+      <text x="580" y="112" text-anchor="middle" class="b">Linux boots</text><text x="580" y="130" text-anchor="middle" class="muted">BusyBox shell on serial</text>
+    </g>
+    <text x="40" y="184" class="b" font-size="15">Phase 2 · A real VMM</text>
+    <text x="720" y="184" text-anchor="end" class="muted" font-size="13">done · tag phase-2-complete</text>
+    <g font-size="13">
+      <circle cx="90" cy="220" r="20" class="f-green"/><text x="90" y="225" text-anchor="middle" class="white b">M4</text>
+      <text x="90" y="262" text-anchor="middle" class="b">Disk</text><text x="90" y="280" text-anchor="middle" class="muted">virtio-blk</text>
+      <circle cx="230" cy="220" r="20" class="f-green"/><text x="230" y="225" text-anchor="middle" class="white b">M5</text>
+      <text x="230" y="262" text-anchor="middle" class="b">Network</text><text x="230" y="280" text-anchor="middle" class="muted">virtio-net + TAP</text>
+      <circle cx="370" cy="220" r="20" class="f-green"/><text x="370" y="225" text-anchor="middle" class="white b">M6</text>
+      <text x="370" y="262" text-anchor="middle" class="b">4 CPUs</text><text x="370" y="280" text-anchor="middle" class="muted">MP table</text>
+      <circle cx="510" cy="220" r="20" class="f-green"/><text x="510" y="225" text-anchor="middle" class="white b">M7</text>
+      <text x="510" y="262" text-anchor="middle" class="b">Hardening</text><text x="510" y="280" text-anchor="middle" class="muted">seccomp</text>
+      <circle cx="650" cy="220" r="20" class="f-green"/><text x="650" y="225" text-anchor="middle" class="white b">M8</text>
+      <text x="650" y="262" text-anchor="middle" class="b">Proofs</text><text x="650" y="280" text-anchor="middle" class="muted">Kani + fuzzing</text>
+    </g>
+    <rect x="40" y="310" width="680" height="40" rx="10" class="f-purple-soft s-purple" stroke-width="2" stroke-dasharray="6 4"/>
+    <text x="380" y="335" text-anchor="middle" font-size="14"><tspan class="b">Phase 3 · Confidential computing</tspan> <tspan class="muted">· not specified yet, needs special hardware</tspan></text>
+  </svg>
+
+  <h3>What each step adds, in kid words</h3>
+  <div class="scroll"><table>
+    <tr><th>Step</th><th>Before</th><th>After</th></tr>
+    <tr><td><b>M1–M2</b></td><td>An empty pretend CPU.</td><td>It can run our own tiny program and say hello.</td></tr>
+    <tr><td><b>M3</b></td><td>Only tiny programs.</td><td>Real Linux runs; you type commands in a shell.</td></tr>
+    <tr><td><b>M4</b></td><td>Everything vanishes on reboot.</td><td>A disk that remembers (a file on the host).</td></tr>
+    <tr><td><b>M5</b></td><td>The guest is alone.</td><td>The guest can <code>ping</code> the host and download files.</td></tr>
+    <tr><td><b>M6</b></td><td>One brain.</td><td>Up to four brains working at once.</td></tr>
+    <tr><td><b>M7</b></td><td>If the VMM is tricked, it can do anything we can.</td><td>Each thread may only do its own job; anything else kills it.</td></tr>
+    <tr><td><b>M8</b></td><td>"We think the parser is safe."</td><td>A computer checked every possible input (within limits).</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================ 7 ============================ -->
+<section class="chapter">
+  <span class="num">7</span>
+  <h2>The one rule: the guest is a stranger</h2>
+  <div class="big-idea">Every number the guest hands us (an address, a length, an index) might be a lie. We <b>check it</b> before we use it. The guest must never be able to crash, hang, or trick the VMM.</div>
+
+  <svg viewBox="0 0 760 230" role="img" aria-label="Guest request passes through a checkpoint before reaching the host">
+    <rect x="20" y="50" width="200" height="120" rx="12" class="f-purple-soft s-purple" stroke-width="2"/>
+    <text x="120" y="88" text-anchor="middle" class="b" font-size="16">Guest</text>
+    <text x="120" y="116" text-anchor="middle" font-size="13" class="mono">"read 4096 bytes</text>
+    <text x="120" y="136" text-anchor="middle" font-size="13" class="mono">to 0xffff_ffff"</text>
+    <path d="M220 110 L 290 110" class="s-ink" stroke-width="2.5" marker-end="url(#ah2)"/>
+    <rect x="290" y="30" width="190" height="160" rx="12" class="f-orange-soft s-orange" stroke-width="2"/>
+    <text x="385" y="60" text-anchor="middle" class="b" font-size="16">VMM checkpoint</text>
+    <text x="310" y="90" font-size="13">✓ inside guest RAM?</text>
+    <text x="310" y="112" font-size="13">✓ no overflow?</text>
+    <text x="310" y="134" font-size="13">✓ chain not a loop?</text>
+    <text x="310" y="156" font-size="13">✓ inside the disk?</text>
+    <path d="M480 80 L 550 60" class="s-green" stroke-width="2.5" marker-end="url(#ah3)"/>
+    <path d="M480 140 L 550 160" class="s-red" stroke-width="2.5" marker-end="url(#ah4)"/>
+    <rect x="550" y="30" width="190" height="60" rx="10" class="f-green-soft s-green" stroke-width="2"/>
+    <text x="645" y="58" text-anchor="middle" class="b" font-size="14">OK → do the work</text>
+    <text x="645" y="77" text-anchor="middle" class="muted" font-size="12">disk file · TAP</text>
+    <rect x="550" y="130" width="190" height="60" rx="10" class="f-red-soft s-red" stroke-width="2"/>
+    <text x="645" y="158" text-anchor="middle" class="b" font-size="14">Bad → error status</text>
+    <text x="645" y="177" text-anchor="middle" class="muted" font-size="12">never a panic</text>
+    <defs>
+      <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="f-blue"/></marker>
+      <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="f-green"/></marker>
+      <marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="f-red"/></marker>
+    </defs>
+    <text x="380" y="220" text-anchor="middle" font-size="13" class="muted">Three layers of defence: checks in code (M4–M5) · proofs and fuzzing of the checks (M8) · seccomp if the checks still fail (M7)</text>
+  </svg>
+
+  <div class="box repo">This rule is written in the project <code>SPEC.md</code>: "A guest is untrusted: nothing a guest does (any port write, any MMIO access, any byte value) may panic the VMM."</div>
+</section>
+
+<!-- ============================ 8 ============================ -->
+<section class="chapter">
+  <span class="num">8</span>
+  <h2>Map of the code</h2>
+  <p>About 6,000 lines of Rust. Here is where each idea lives.</p>
+  <div class="scroll"><table>
+    <tr><th>File / folder</th><th>What it is</th></tr>
+    <tr><td class="mono">src/main.rs</td><td>Command line: <code>vmm raw</code> (tiny guests) and <code>vmm boot</code> (Linux).</td></tr>
+    <tr><td class="mono">src/lib.rs</td><td>Puts the machine together and starts it.</td></tr>
+    <tr><td class="mono">src/vm.rs</td><td>Opens <code>/dev/kvm</code>, creates the VM, adds guest RAM, interrupt controller.</td></tr>
+    <tr><td class="mono">src/vcpu.rs</td><td>One thread per pretend CPU; the <code>KVM_RUN</code> loop and its exits.</td></tr>
+    <tr><td class="mono">src/loader.rs</td><td>Copies the Linux kernel and initramfs into guest RAM.</td></tr>
+    <tr><td class="mono">src/arch/x86_64/</td><td>x86 setup: registers, GDT, page tables, boot params, MP table.</td></tr>
+    <tr><td class="mono">src/devices/</td><td>Serial port, i8042 (reboot), port and MMIO buses, TAP.</td></tr>
+    <tr><td class="mono">src/devices/virtio/</td><td>Virtqueues, the MMIO transport, block and net devices, the checked parsers, Kani proofs.</td></tr>
+    <tr><td class="mono">src/event_loop.rs</td><td>Main thread: waits for disk/net doorbells and does the I/O.</td></tr>
+    <tr><td class="mono">src/seccomp.rs</td><td>Per-thread allowlists of system calls.</td></tr>
+    <tr><td class="mono">src/terminal.rs</td><td>Puts your terminal in raw mode and always restores it.</td></tr>
+    <tr><td class="mono">fuzz/</td><td>Separate crate with the fuzz target.</td></tr>
+    <tr><td class="mono">guests/ scripts/ tests/</td><td>Tiny assembly guests, build/verify scripts, integration tests.</td></tr>
+    <tr><td class="mono">specs/ notes/</td><td>The specs (what to build), decisions log, learning notes per phase.</td></tr>
+  </table></div>
+
+  <div class="box quiz">
+    <ol>
+      <li>In one sentence, what is the difference between KVM and our <code>vmm</code>?</li>
+      <li>Why is a container's wall weaker than a VM's wall?</li>
+      <li>Name the three things a cloud provider wants at once, and which old tool misses which.</li>
+      <li>Why does throwing away devices (floppy, USB, PCI) make the VMM safer, not just smaller?</li>
+      <li>Our three layers of defence against a hostile guest: what are they?</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================ 9 ============================ -->
+<section class="chapter">
+  <span class="num">9</span>
+  <h2>Project log</h2>
+  <p>Things we add about the project over time, newest at the bottom.</p>
+
+  <div class="log">
+    <div class="date">2026-10-02</div>
+    <p>File started. Covers what the project is, the problem, where industry uses microVMs, and the Phase 1 → 3 road.</p>
+  </div>
+</section>
+
+</main>
+</body>
+</html>
