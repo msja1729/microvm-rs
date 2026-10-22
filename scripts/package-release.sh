@@ -25,7 +25,7 @@ strip "$OUT/vmm"
 cp artifacts/bzImage artifacts/initramfs.cpio artifacts/disk.ext4 "$OUT/"
 cp artifacts/kernel.config "$OUT/kernel.config"
 cp guests/build/hello16.bin guests/build/hello64.bin "$OUT/"
-cp README.md "$OUT/"
+cp README.md LICENSE "$OUT/"
 
 cat >"$OUT/run.sh" <<'EOF'
 #!/usr/bin/env bash

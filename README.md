@@ -109,3 +109,9 @@ study-notes/       concept notes, level by level
 This is a learning project: one serial console, at most one disk, one NIC and four vCPUs. It
 does not include a jailer (chroot/namespaces/cgroups) or an API server. See
 [docs/user-manual.pdf](docs/user-manual.pdf) for a guided tour of every command.
+
+## License
+
+[MIT](LICENSE). Release bundles also contain a Linux kernel and a BusyBox initramfs, which
+are GPL-2.0 software; their exact versions and build configuration are in `scripts/` and
+`configs/phase2.config`.
