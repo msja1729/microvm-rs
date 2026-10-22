@@ -139,7 +139,7 @@ no_new_privs_first() {
 # AC-7.3: the M4-M6 checks above ran with seccomp on (the default): all passed, and
 # none of their tests disables seccomp.
 m4_to_m6_with_seccomp() {
-    local ok=0
+    local ok=0 id
     if grep -n -- '--no-seccomp' tests/m4_virtio_blk.rs tests/m5_virtio_net.rs tests/m6_smp.rs; then
         echo "an M4-M6 test disables seccomp"; ok=1
     fi

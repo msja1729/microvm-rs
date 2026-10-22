@@ -248,3 +248,14 @@ Choices made inside the spec. Format: question → options → choice → why. D
 - **Options:** trust the exit code of `cargo kani`; check each named harness. For the fuzzer: use `git status` to detect corpus changes; compare checksums.
 - **Chose:** AC-8.2 requires exit 0 within 1200 s, `VERIFICATION:- SUCCESSFUL` for each of the seven named harnesses, and exactly seven successes. AC-8.3 compares the seed corpus's checksums before and after fuzzing a `mktemp -d` copy. AC-P1 checks that every `**AC-…**` in the spec has a `check` line. AC-P2 checks the required notes sections (≥ 50 words each), the per-milestone explanations, the "not cover" list and ≥ 12 answered questions.
 - **Why:** a harness that is renamed or silently dropped must not pass, and the corpus check must work whether or not the corpus is committed yet.
+
+### D48. Seccomp run-time checks on a host that already filters every process
+- **Question:** after a WSL2 update (kernel 6.18), `/init` and therefore every process runs with an inherited seccomp filter (`Seccomp: 2`, `Seccomp_filters: 1`). AC-7.5's test asserted `Seccomp: 0` on every thread under `--no-seccomp` and failed; AC-7.1's test asserted `Seccomp: 2`, which now passes even with no VMM filter.
+- **Options:** require a host without seccomp; compare the mode; compare `Seccomp_filters` with the count the test process inherited.
+- **Chose:** count filters. AC-7.1: every thread has more filters than the test process inherited. AC-7.5: every thread has exactly as many. The spec text (AC-7.1, AC-7.5) is unchanged; only the tests' measurement changed.
+- **Why:** it measures what the VMM itself installed, so both tests are right on hosts with and without an inherited filter, and AC-7.1 can no longer pass vacuously.
+
+### D49. `failed_ids` loop variable in the Phase 2 verify script
+- **Question:** `m4_to_m6_with_seccomp` (AC-7.3) looped with a non-`local` `id`, which overwrote `check`'s `id`, so a failing AC-7.3 was printed and recorded under the last failed M4-M6 id.
+- **Chose:** declare `id` local in that function.
+- **Why:** a one-word fix; the PASS/FAIL line and log path must name the criterion that ran.

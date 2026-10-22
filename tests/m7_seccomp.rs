@@ -61,8 +61,12 @@ fn boot(extra: &[&str]) -> (PtySession, u32) {
     (session, pid)
 }
 
-/// `(thread name, Seccomp mode, NoNewPrivs)` for every thread of process `pid`.
-fn threads(pid: u32) -> Vec<(String, String, String)> {
+/// `(thread name, Seccomp_filters, NoNewPrivs)` for every thread of process `pid`.
+///
+/// Filters are counted rather than checking `Seccomp:` (the mode), because a host may run
+/// every process under an inherited filter (WSL2 does, from its `/init`). Compare the
+/// count with [`inherited_filters`] to see what the VMM installed itself.
+fn threads(pid: u32) -> Vec<(String, u32, String)> {
     let mut out = Vec::new();
     for task in std::fs::read_dir(format!("/proc/{pid}/task")).expect("read task dir") {
         let status = std::fs::read_to_string(task.expect("task").path().join("status"))
@@ -74,14 +78,27 @@ fn threads(pid: u32) -> Vec<(String, String, String)> {
                 .map(|v| v.trim().to_owned())
                 .unwrap_or_default()
         };
-        out.push((field("Name:"), field("Seccomp:"), field("NoNewPrivs:")));
+        let filters = field("Seccomp_filters:").parse().expect("Seccomp_filters");
+        out.push((field("Name:"), filters, field("NoNewPrivs:")));
     }
     out.sort();
     out
 }
 
+/// Seccomp filters this test process inherited; the VMM it spawns starts with the same.
+fn inherited_filters() -> u32 {
+    std::fs::read_to_string("/proc/self/status")
+        .expect("read own status")
+        .lines()
+        .find_map(|l| l.strip_prefix("Seccomp_filters:"))
+        .expect("kernel reports Seccomp_filters")
+        .trim()
+        .parse()
+        .expect("numeric Seccomp_filters")
+}
+
 /// AC-7.1 / AC-7.2 at run time: every thread of a running VMM (main, stdin, each vCPU)
-/// has a seccomp filter (mode 2) and no-new-privileges set.
+/// has a seccomp filter of its own (beyond any inherited one) and no-new-privileges set.
 #[test]
 #[ignore = "needs artifacts/bzImage and artifacts/initramfs.cpio"]
 fn ac_7_1_every_thread_is_filtered() {
@@ -97,8 +114,9 @@ fn ac_7_1_every_thread_is_filtered() {
         names.is_superset(&expected) && extra.iter().all(|n| n.starts_with("kvm-")),
         "unexpected thread set: {threads:?}"
     );
-    for (name, seccomp, nnp) in &threads {
-        assert_eq!(seccomp, "2", "thread {name} has no seccomp filter");
+    let inherited = inherited_filters();
+    for (name, filters, nnp) in &threads {
+        assert!(*filters > inherited, "thread {name} has no seccomp filter");
         assert_eq!(nnp, "1", "thread {name} lacks NoNewPrivs");
     }
     session.send_line("reboot -f").expect("send");
@@ -162,9 +180,12 @@ fn ac_7_5_no_seccomp_warns_and_boots() {
         .expect("warning not on stderr");
     drop(session);
 
+    let inherited = inherited_filters();
     let (mut session, pid) = boot(&["--no-seccomp"]);
     assert!(
-        threads(pid).iter().all(|(_, seccomp, _)| seccomp == "0"),
+        threads(pid)
+            .iter()
+            .all(|(_, filters, _)| *filters == inherited),
         "a filter was installed despite --no-seccomp"
     );
     session.send_line("reboot -f").expect("send");
