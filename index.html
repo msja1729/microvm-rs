@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>microvm-rs Interview Prep</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a bench notebook for one project. Sticky tab strip, one view at a time,
+   a hand-placed SVG machine diagram that opens component notes, a self-graded drill. */
+:root {
+  --paper: #eef1f4;
+  --surface: #ffffff;
+  --ink: #131a21;
+  --muted: #56636f;
+  --line: #d3dae1;
+  --accent: #0c6a87;
+  --accent-soft: #dcecf2;
+  --hex: #9a5300;
+  --good: #23724a;
+  --good-soft: #dff1e7;
+  --warn: #9b6400;
+  --warn-soft: #f8ecd5;
+  --band-guest: #e8eef3;
+  --band-kvm: #e4ece9;
+  --band-vmm: #eceaf2;
+  --f-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e1317; --surface: #151c22; --ink: #e2e8ed; --muted: #95a3af; --line: #27323b;
+    --accent: #5cb8d6; --accent-soft: #15303b; --hex: #e5a556;
+    --good: #6fcf97; --good-soft: #15301f; --warn: #e3b25a; --warn-soft: #362a12;
+    --band-guest: #141d24; --band-kvm: #13201c; --band-vmm: #1a1824;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e1317; --surface: #151c22; --ink: #e2e8ed; --muted: #95a3af; --line: #27323b;
+  --accent: #5cb8d6; --accent-soft: #15303b; --hex: #e5a556;
+  --good: #6fcf97; --good-soft: #15301f; --warn: #e3b25a; --warn-soft: #362a12;
+  --band-guest: #141d24; --band-kvm: #13201c; --band-vmm: #1a1824;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink);
+  font: 16px/1.6 var(--f-body);
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+  z-index: 10; background: var(--surface);
+}
+.wrap {
+  max-width: 980px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header.top { padding-block: 28px 18px; }
+.eyebrow {
+  font: 600 12px/1.2 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 800; font-stretch: 85%; margin-top: 8px; }
+h2 { font-size: 26px; font-weight: 750; font-stretch: 88%; }
+h3 { font-size: 18px; font-weight: 700; font-stretch: 92%; }
+.lede { color: var(--muted); max-width: 66ch; margin: 10px 0 0; }
+.lede a, a { color: var(--accent); }
+code, .mono { font-family: var(--f-mono); font-size: .88em; }
+code { color: var(--hex); }
+
+nav.tabs {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+nav.tabs .wrap { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs a {
+  flex: none; padding: 12px 12px 10px; text-decoration: none; color: var(--muted);
+  font: 600 14px/1 var(--f-body); border-bottom: 3px solid transparent;
+}
+nav.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+nav.tabs a:focus-visible, button:focus-visible, summary:focus-visible, .node:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+main { padding-block: 28px 64px; }
+section.view { display: grid; gap: 28px; }
+.prose { max-width: 70ch; }
+.prose p { margin: 0 0 12px; }
+.block { display: grid; gap: 12px; }
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px;
+  min-width: 0;
+}
+.script {
+  background: var(--surface); border-left: 4px solid var(--accent); padding: 18px 22px;
+  font-size: 17px; line-height: 1.7; max-width: 72ch;
+}
+.script p { margin: 0 0 10px; }
+.hint { font-size: 14px; color: var(--muted); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px/1.3 var(--f-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--hex); white-space: nowrap; }
+ol.steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+ul.tight { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+/* Diagram */
+.diagram { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.diagram svg { display: block; min-width: 760px; width: 100%; height: auto; }
+.band-label { font: 600 11px var(--f-mono); letter-spacing: .1em; fill: var(--muted); }
+.node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; transition: stroke .12s, fill .12s; }
+.node { cursor: pointer; }
+.node:hover rect, .node.on rect { stroke: var(--accent); stroke-width: 2; fill: var(--accent-soft); }
+.node .t { font: 700 14.5px var(--f-display); fill: var(--ink); }
+.node .s { font: 11px var(--f-mono); fill: var(--muted); }
+.static rect { fill: none; stroke: var(--line); stroke-dasharray: 4 3; }
+.static .t { font: 600 13.5px var(--f-display); fill: var(--muted); }
+.static .s { font: 10.5px var(--f-mono); fill: var(--muted); }
+.edge { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+.edge-label { font: 10.5px var(--f-mono); fill: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font: 500 13px/1 var(--f-body); padding: 8px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.panel { display: grid; gap: 14px; }
+.panel .files { font: 12.5px var(--f-mono); color: var(--muted); }
+.dlist { display: grid; gap: 10px; }
+.dlist div { display: grid; grid-template-columns: 64px 1fr; gap: 10px; }
+.dtag { font: 600 12px/1.6 var(--f-mono); color: var(--hex); }
+.say {
+  background: var(--accent-soft); border-radius: 6px; padding: 12px 14px; font-size: 15px;
+}
+.say b { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 4px; }
+
+/* Risks */
+.risk { display: grid; gap: 8px; }
+.risk .sev { font: 600 11px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; }
+.sev.high { color: var(--warn); }
+.sev.med { color: var(--accent); }
+
+/* Drill */
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.progress { font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; display: flex; max-width: 360px; }
+.bar i { display: block; height: 100%; }
+.bar .g { background: var(--good); } .bar .w { background: var(--warn); }
+.btn {
+  font: 600 13.5px/1 var(--f-body); padding: 9px 13px; border-radius: 5px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.qlist { display: grid; gap: 10px; }
+.q { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.q.got { border-left: 4px solid var(--good); }
+.q.shaky { border-left: 4px solid var(--warn); }
+.q.flash { outline: 2px solid var(--accent); }
+.qhead { display: flex; gap: 10px; align-items: baseline; }
+.qcat { flex: none; font: 600 11px var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); min-width: 0; }
+.qtext { font-weight: 600; font-size: 16px; }
+details summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 14px; }
+details .ans { margin-top: 10px; font-size: 15px; display: grid; gap: 8px; }
+details .ans p { margin: 0; }
+.where { font: 12px var(--f-mono); color: var(--muted); }
+.rate { display: flex; gap: 8px; flex-wrap: wrap; }
+.rate button[aria-pressed="true"].g { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+.rate button[aria-pressed="true"].w { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+pre.cmd {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px;
+  font: 13px/1.6 var(--f-mono); overflow-x: auto; margin: 0; color: var(--ink);
+}
+pre.cmd .c { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (max-width: 520px) { .dlist div { grid-template-columns: 1fr; gap: 0; } }
+</style>
+
+</head>
+<body>
+<header class="top wrap">
+  <div class="eyebrow">msja1729 / microvm-rs · v0.2.0 · Phase 1 + Phase 2</div>
+  <h1>microvm-rs Interview Prep</h1>
+  <p class="lede">Built from your repo: both phase specs, 72 logged decisions, the notes, and the source. The method follows Chapter 13.11: walk every design decision, then answer questions out loud without looking anything up. Your notes already hold 26 answered questions. The drill here adds the ones a reviewer asks after reading those, including about the process itself.</p>
+</header>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="wrap" id="tabs">
+    <a href="#pitch">Pitch</a>
+    <a href="#arch">Architecture</a>
+    <a href="#process">SDD process</a>
+    <a href="#risks">Weak spots</a>
+    <a href="#drill">Drill</a>
+    <a href="#demo">Demo</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<!-- PITCH -->
+<section class="view" id="v-pitch" data-view="pitch">
+  <div class="block">
+    <h2>The 60-second answer</h2>
+    <p class="hint">"Tell me about your project." Practise until you can say this without reading. Keep the numbers exact; a professor notices rounding.</p>
+    <div class="script">
+      <p>microvm-rs is a minimal virtual machine monitor in Rust, in the style of Firecracker, built on Linux KVM. It boots an unmodified Linux 6.12 kernel in about four seconds, with a virtio disk backed by a host file, a virtio network card backed by a TAP interface, and up to four vCPUs.</p>
+      <p>KVM does the CPU and memory virtualization inside the kernel. My process does everything else: it lays out guest memory, puts the vCPU straight into 64-bit long mode, acts as the boot loader, emulates the serial port and the virtio devices, and describes the machine to Linux with an MP table and per-vCPU CPUID.</p>
+      <p>The guest is treated as hostile. All code that parses guest data is written as pure functions, proven with the Kani model checker and fuzzed, and every VMM thread runs under its own seccomp allowlist, so a forbidden syscall kills the process.</p>
+      <p>I built it spec-first: two phase specs with 57 pass/fail acceptance criteria, an approved plan per phase, eight milestones, 72 logged decisions, and a verify script that checks every criterion. It runs as a normal user, and v0.2.0 is on GitHub with a one-command <code>run.sh</code>.</p>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>The 2-minute follow-up: one request, end to end</h2>
+    <p class="hint">If they say "go deeper", trace one disk read. It touches every layer and shows you understand threads, KVM and the untrusted-input story.</p>
+    <ol class="steps prose">
+      <li>The guest's <code>virtio_blk</code> driver puts three descriptors in RAM (16-byte header, data buffer, 1-byte status), publishes the head in the available ring and writes <code>0</code> to <code>QueueNotify</code> at <code>0xd000_0050</code>.</li>
+      <li>KVM matches that write against the <b>ioeventfd</b> registered for queue 0 and signals it. The guest resumes immediately; no exit to user space.</li>
+      <li>The <b>main thread</b> wakes in <code>epoll_wait</code>, locks the transport, and <code>Queue::pop</code> reads <code>avail.idx</code> and the ring slot, each checked.</li>
+      <li><code>walk_chain</code> copies each descriptor out once (at most queue-size of them). <code>parse_blk_request</code> checks directions, RAM ranges and <code>sector × 512 + len ≤ disk size</code> with checked arithmetic.</li>
+      <li>The device <code>pread</code>s through a 64 KiB bounce buffer into guest RAM, writes the status byte, the used element, a release fence, then <code>used.idx</code>.</li>
+      <li>It sets <code>InterruptStatus</code> bit 0 and writes the <b>irqfd</b>: KVM raises IRQ 5 through the IOAPIC.</li>
+      <li>The guest's handler reads <code>InterruptStatus</code> and writes <code>InterruptACK</code>. Those are MMIO exits on the <b>vCPU thread</b>, served from an atomic without the transport lock.</li>
+    </ol>
+  </div>
+
+  <div class="block">
+    <h2>Numbers to have ready</h2>
+    <div class="card tbl">
+      <table>
+        <thead><tr><th>Fact</th><th>Value</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Boot to <code>PHASE1-INIT-OK</code> (disk + TAP + 4 vCPUs)</td><td class="num">≈ 4 s</td><td>D35 · bound is 30 s</td></tr>
+          <tr><td>Rust in <code>src/</code></td><td class="num">≈ 6,200 lines</td><td>29 files</td></tr>
+          <tr><td>Tests</td><td class="num">69 unit · 26 integration</td><td><code>src/</code>, <code>tests/m1…m7</code></td></tr>
+          <tr><td>Kani harnesses, total run time</td><td class="num">7 · ≈ 1 min</td><td>D43 · bound is 20 min</td></tr>
+          <tr><td>Fuzzing</td><td class="num">300 s, 0 crashes</td><td>1.36 M execs in the 30 s smoke run</td></tr>
+          <tr><td><code>unsafe</code> blocks, each with <code>// SAFETY:</code></td><td class="num">19</td><td>enforced by clippy lint</td></tr>
+          <tr><td>Acceptance criteria</td><td class="num">22 + 35 = 57</td><td>phase-1 / phase-2 SPEC</td></tr>
+          <tr><td>Logged decisions</td><td class="num">D1–D23 · D1–D49</td><td><code>specs/phase-N/DECISIONS.md</code></td></tr>
+          <tr><td>Guest RAM cap</td><td class="num">3 GiB</td><td>below the 32-bit MMIO hole</td></tr>
+          <tr><td>virtio-blk window · IRQ</td><td class="num">0xd000_0000 · 5</td><td>Q4</td></tr>
+          <tr><td>virtio-net window · IRQ</td><td class="num">0xd000_1000 · 6</td><td>Q4</td></tr>
+          <tr><td>MP table</td><td class="num">0x9fc00</td><td>EBDA, already reserved in e820</td></tr>
+          <tr><td>KVM TSS</td><td class="num">0xfffbd000</td><td>3 pages, never RAM</td></tr>
+          <tr><td>Kernel · boot_params · cmdline</td><td class="num">0x100000 · 0x7000 · 0x20000</td><td>Phase 1 layout</td></tr>
+          <tr><td>GDT · PML4/PDPT/PD</td><td class="num">0x500 · 0x9000/0xA000/0xB000</td><td>2 MiB pages, 1 GiB identity map</td></tr>
+          <tr><td>QueueNumMax · bounce buffer</td><td class="num">256 · 64 KiB</td><td>D4 · D6</td></tr>
+          <tr><td>virtio-net header · max TX chain</td><td class="num">12 B · 65,562 B</td><td>Q3 · spec</td></tr>
+          <tr><td>Exit codes</td><td class="num">0 · 1 · 2</td><td>guest stop · error/signal · host setup</td></tr>
+          <tr><td>Built</td><td class="num">Sep 28 – Sep 30, 2026</td><td>released Oct 22 as v0.2.0</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section class="view" id="v-arch" data-view="arch" hidden>
+  <div class="block">
+    <h2>Design-decision walkthrough</h2>
+    <p class="hint">Click a component. For each one, explain the "why" out loud before reading the notes. If your explanation doesn't match the decision log, that gap is what to study.</p>
+  </div>
+  <div class="diagram" role="group" aria-label="microvm-rs architecture">
+    <svg id="svg" viewBox="0 0 1000 560" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+  <div class="chips" id="compChips" aria-label="Components"></div>
+  <div class="card panel" id="compPanel" aria-live="polite"></div>
+</section>
+
+<!-- PROCESS -->
+<section class="view" id="v-process" data-view="process" hidden>
+  <div class="block prose">
+    <h2>Your project, read through Chapter 13</h2>
+    <p>The professor wrote the chapter, so expect the interview to test whether you did SDD or just used the vocabulary. For each phase, have one concrete artifact you can point at.</p>
+  </div>
+  <div class="card tbl">
+    <table>
+      <thead><tr><th>Phase</th><th>What happened in microvm-rs</th><th>Point at</th></tr></thead>
+      <tbody>
+        <tr><td><b>Spec</b></td><td>Project spec stays short; each phase has Goal, Constraints, I/O (CLI, memory map, exit codes), pass/fail ACs and an explicit output-file list, which is the chapter's five-element anatomy. Two extras: <i>Known pitfalls</i> (KVM/x86 facts the plan must address) and <i>Resolved questions</i>. Review findings were resolved before planning.</td><td><code>df1be9d</code>, <code>6cd8a4a</code></td></tr>
+        <tr><td><b>Plan</b></td><td>PLAN.md agent-drafted, human-approved, committed before any Phase 2 code. Decisions D1–D18 were made while planning and logged with options and reasons.</td><td><code>d28915a</code></td></tr>
+        <tr><td><b>Implement</b></td><td>One milestone per commit, M1 to M8. CLAUDE.md forbids starting the next milestone without approval and requires a SAFETY comment on every unsafe block and ioctl.</td><td><code>aa1e035</code> … <code>385d68d</code></td></tr>
+        <tr><td><b>Verify</b></td><td><code>verify-phase-N.sh</code> prints PASS/FAIL per AC and exits non-zero on any failure. AC-P1 itself checks that every <code>AC-…</code> in the spec has a check line, so a criterion can't be silently skipped (D47).</td><td><code>scripts/verify-phase-2.sh</code></td></tr>
+        <tr><td><b>Iterate</b></td><td>Kani found a counterexample to AC-8.2(d). The code was safe; the spec's wording was wrong. The spec was reworded with approval, and the code didn't change.</td><td><code>7f2dd3d</code>, D42</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid2">
+    <div class="card block">
+      <h3>Fix the spec, not the code: your best story</h3>
+      <p>AC-8.2(d) said a chain that revisits a descriptor index is rejected. Kani's counterexample: head 0 has <code>NEXT → 0</code>, and between the two reads the guest rewrites descriptor 0 so the second copy has no <code>NEXT</code>. The walker accepts a 2-descriptor chain.</p>
+      <p>That isn't a safety bug. Each descriptor is read once into a local copy and checked, and the walk is still bounded by the queue size. Patching the code with a visited-set would add state for no safety gain. Instead the spec now states two properties: the walk always ends within the queue size, and a revisit is rejected <i>when the table is stable</i>. The harness proves both.</p>
+      <div class="say"><b>Say it like this</b>The proof told me my spec claimed something stronger than what's true under concurrency. I changed the claim, not the code, and the commit says why.</div>
+    </div>
+    <div class="card block">
+      <h3>Scope creep: concrete refusals</h3>
+      <ul class="tight">
+        <li><b>D3</b>: <code>--mode long</code> was kept out of the CLI during M1, so M2 added the flag together with its implementation.</li>
+        <li><b>D9</b>: the MP table waited for M6, even though M4's IRQs could have used it. M4/M5 used the existing PIC path.</li>
+        <li><b>D12, D46</b>: test helpers were duplicated rather than adding <code>tests/common/</code>, and <code>fuzz/Cargo.lock</code> stays ignored, because neither file is in the spec's output list.</li>
+        <li><b>D7</b>: verify-phase-1.sh grew one milestone at a time instead of being written up front.</li>
+        <li>Each spec has an explicit "Out of scope" list: snapshots, API socket, jailer, PCI, ACPI…</li>
+      </ul>
+    </div>
+    <div class="card block">
+      <h3>Outcome vs. trajectory evaluation</h3>
+      <p>The verify scripts are outcome evaluation. Plan approval, per-milestone review and the decision log are trajectory evaluation.</p>
+      <p>Your project has an example where outcome alone lied. After a WSL2 update every process ran under an inherited seccomp filter, so AC-7.1's test (<code>Seccomp: 2</code> on every thread) <i>passed even with no VMM filter</i>. D48 changed the test to count filters against the inherited baseline, so it can no longer pass vacuously.</p>
+    </div>
+    <div class="card block">
+      <h3>CLAUDE.md and the extension toolkit</h3>
+      <p>Your CLAUDE.md holds the rules that must shape every session: read the specs first, one milestone at a time, never edit a SPEC.md without asking, stop and propose a spec change on ambiguity, log every in-scope choice, ask before new crates or sudo. Auto memory recorded the GitHub/release facts.</p>
+      <p>Likely follow-up: "which rule should be a hook?" Answer: fmt and clippy at every commit. A rule that must hold every time belongs in a pre-commit hook, not prose (Ch. 13.5.5 and 13.9).</p>
+    </div>
+    <div class="card block">
+      <h3>Where SDD struggled here</h3>
+      <p>Three tasks were discovery, not specification, which matches the chapter's "contractor, not researcher" point:</p>
+      <ul class="tight">
+        <li>The seccomp allowlists could not be written from the code; they came from <code>strace -f</code> traces, which found <code>TCGETS</code> inside glibc's <code>tcsetattr</code> (D36).</li>
+        <li>Kani bounds: the spec had a fallback (queue size 2) in case proofs ran over 20 minutes (Q5). A harness took 15+ minutes until symbolic-length heap data was removed (D43).</li>
+        <li>Kani's counterexample (above) showed the spec's own claim needed refining.</li>
+      </ul>
+    </div>
+    <div class="card block">
+      <h3>Reversibility</h3>
+      <p>Irreversible or privileged steps stayed with the human. The agent can't sudo, so the TAP is created once by the user with <code>sudo scripts/setup-tap.sh</code>, and the VMM only opens it. <code>setup-tap.sh</code> refuses to delete a foreign <code>vmtap0</code> (D31). Tests always use a temporary copy of the disk image, and the fuzzer runs on a temporary copy of the corpus.</p>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>The chapter's checkpoint questions, answered with this project</h2>
+    <div class="grid2">
+      <div class="card"><b>13.3 analog.</b> "A test fails: <code>/sys/block/vda/size</code> prints <code>131070</code>, not <code>131072</code>. First question?" Is the spec's number right? 64 MiB / 512 = 131072, so the spec is right and the implementation's capacity is wrong. If the spec had been ambiguous (say, bytes vs. sectors), the fix would go in SPEC.md first.</div>
+      <div class="card"><b>13.4 analog.</b> "It boots, so you're done?" No: passing AC-6.4 says it boots ten times, not that you can explain why APs wait for SIPI. Do the walkthrough (Architecture tab) and the drill without notes.</div>
+      <div class="card"><b>13.1 analog.</b> Vibe coding vs SDD here: a VMM that mis-parses one descriptor gives the guest host memory access. The cost of being wrong is a security hole, not a re-run, so SDD was the right call from day one.</div>
+      <div class="card"><b>Worked problem 13.3 analog.</b> Read your log bottom-up: Phase 2 spec placeholder → spec → spec review fixes → plan + D1–D18 → M4 … M8 → spec clarification → test fix. Spec before plan before code.</div>
+    </div>
+  </div>
+</section>
+
+<!-- RISKS -->
+<section class="view" id="v-risks" data-view="risks" hidden>
+  <div class="block prose">
+    <h2>Weak spots: raise them before they're found</h2>
+    <p>A reviewer who has read the chapter will look for these. Naming a limitation yourself, with its reason, reads as ownership. Being caught by it reads as not knowing your own code.</p>
+  </div>
+  <div class="grid2" id="riskList"></div>
+</section>
+
+<!-- DRILL -->
+<section class="view" id="v-drill" data-view="drill" hidden>
+  <div class="block prose">
+    <h2>Interview drill</h2>
+    <p>Say your answer out loud first, then open the model answer. Mark it honestly. "Shaky" means re-read the file named under the answer, not memorise the paragraph. Your marks stay in this browser.</p>
+  </div>
+  <div class="toolbar">
+    <div class="block" style="gap:6px">
+      <div class="progress" id="progressText"></div>
+      <div class="bar" id="progressBar"><i class="g"></i><i class="w"></i></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn primary" id="randomBtn" type="button">Random unanswered</button>
+      <button class="btn" id="resetBtn" type="button">Clear marks</button>
+    </div>
+  </div>
+  <div class="chips" id="catChips" aria-label="Filter by topic"></div>
+  <div class="qlist" id="qlist"></div>
+</section>
+
+<!-- DEMO -->
+<section class="view" id="v-demo" data-view="demo" hidden>
+  <div class="block prose">
+    <h2>Live demo script</h2>
+    <p>From the release tarball, so you show exactly what the professor downloaded. Rehearse it once on the machine you'll present from. Note that <code>run.sh</code> boots with <code>--disk disk.ext4</code>, so writes in the guest change the bundled image.</p>
+  </div>
+  <div class="block">
+    <h3>1. Install and boot (≈ 4 s)</h3>
+<pre class="cmd"><span class="c"># verify the download, unpack, boot with 2 vCPUs and the disk</span>
+sha256sum -c SHA256SUMS
+tar xzf microvm-rs-v0.2.0-x86_64-linux.tar.gz && cd microvm-rs-v0.2.0-x86_64-linux
+VCPUS=4 ./run.sh</pre>
+  </div>
+  <div class="block">
+    <h3>2. Inside the guest: prove each milestone</h3>
+<pre class="cmd">echo vmm-$((6*7))                 <span class="c"># M3: keystrokes reach the guest (IRQ 4 via irqfd)</span>
+uname -r                          <span class="c"># 6.12.x</span>
+nproc; grep LOC /proc/interrupts  <span class="c"># M6: 4 CPUs, each taking timer interrupts</span>
+cat /sys/block/vda/size           <span class="c"># M4: 131072 sectors = 64 MiB</span>
+mkdir -p /mnt && mount /dev/vda /mnt && cat /mnt/hello.txt   <span class="c"># phase2-disk</span>
+echo persist-ok > /mnt/p.txt && sync && umount /mnt
+reboot -f                         <span class="c"># i8042 reset → VMM exits 0, terminal restored</span></pre>
+    <p class="hint">Boot again and <code>cat</code> <code>/mnt/p.txt</code> after mounting: persistence across a new VMM process (AC-4.5).</p>
+  </div>
+  <div class="block">
+    <h3>3. From a second terminal while it runs: show seccomp</h3>
+<pre class="cmd">for t in /proc/$(pgrep -x vmm)/task/*; do
+  echo "$(cat $t/comm): $(grep -E 'Seccomp_filters|NoNewPrivs' $t/status | tr '\n' ' ')"
+done</pre>
+    <p class="hint">Threads <code>vmm</code>, <code>stdin</code>, <code>vcpu0..3</code>, plus KVM's <code>kvm-nx-lpage-recovery</code> worker. On WSL2 expect one more filter than a plain shell has (D48).</p>
+  </div>
+  <div class="block">
+    <h3>4. The small programs and the failure paths</h3>
+<pre class="cmd">./vmm raw --image hello16.bin --mode real; echo "exit $?"   <span class="c"># Hello from real mode! · exit 0</span>
+./vmm raw --image hello64.bin --mode long; echo "exit $?"   <span class="c"># Hello from long mode! · exit 0</span>
+./vmm boot --kernel bzImage --vcpus 5; echo "exit $?"       <span class="c"># rejected · exit 2</span>
+./vmm boot --kernel bzImage --initrd initramfs.cpio --seccomp-test-violation
+echo "exit $?"   <span class="c"># 159 = 128 + SIGSYS(31): killed by the vCPU filter (AC-7.4)</span>
+stty sane        <span class="c"># SIGSYS can't be caught, so the terminal is left in raw mode</span></pre>
+    <p class="hint">Run the violation demo last. If the terminal stops echoing, type <code>stty sane</code> and press Enter even if you can't see it. That this happens is itself a talking point: the spec exempts SIGSYS and SIGKILL from "always restore the terminal".</p>
+  </div>
+  <div class="block">
+    <h3>The night before</h3>
+    <div class="card">
+      <ul class="tight">
+        <li>Run the demo once, end to end, on the presenting machine. Check <code>/dev/kvm</code> access first.</li>
+        <li>Have the repo open at <code>specs/phase-2/DECISIONS.md</code>, <code>src/devices/virtio/queue.rs</code> and <code>src/seccomp.rs</code>; those are the files you'll be asked to walk through.</li>
+        <li>Clear the drill: every question marked "Got it" without opening the answer.</li>
+        <li>Decide how you'll describe your role versus the agent's (Weak spots, first card). Say it the same way every time.</li>
+        <li>Optional: mark Phase 2 as COMPLETE in both SPEC files, the way <code>2f71b9c</code> did for Phase 1 (Weak spots, second card).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+/* ---------- routing ---------- */
+const VIEWS = ["pitch", "arch", "process", "risks", "drill", "demo"];
+function show(view) {
+  if (!VIEWS.includes(view)) view = "pitch";
+  document.querySelectorAll("section.view").forEach(s => { s.hidden = s.dataset.view !== view; });
+  document.querySelectorAll("#tabs a").forEach(a => {
+    if (a.getAttribute("href") === "#" + view) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+}
+window.addEventListener("hashchange", () => { show(location.hash.slice(1)); window.scrollTo(0, 0); });
+show(location.hash.slice(1));
+
+/* ---------- architecture ---------- */
+const COMPONENTS = [
+  { id: "boot", title: "Boot path & memory", sub: "GDT · paging · boot_params", x: 30, y: 45, w: 290, h: 80,
+    files: "src/arch/x86_64/{regs,gdt,paging,boot_params}.rs · src/loader.rs",
+    what: "The VMM is the firmware and the boot loader. It writes a GDT, empty IDT and identity-mapped page tables into guest RAM, loads the bzImage at 1 MiB, the initrd at the top of RAM and the command line at 0x20000, builds the zero page at 0x7000, and sets the vCPU's final long-mode state directly. Linux starts at load address + 0x200 with RSI = boot_params (64-bit boot protocol).",
+    decisions: [
+      ["D10", "Long mode is set in one shot with KVM_SET_SREGS (CR0.PE|PG, CR4.PAE, EFER.LME|LMA, CR3, 64-bit CS) rather than a guest trampoline; M3's 64-bit entry needs exactly this state."],
+      ["D9", "Every vCPU gets KVM_SET_CPUID2 from KVM_GET_SUPPORTED_CPUID: KVM rejects EFER.LME unless the guest's CPUID advertises long mode."],
+      ["Q1", "2 MiB pages, not 1 GiB: pdpe1gb isn't guaranteed under nested virtualization, and an unsupported large page triple-faults with no clue why."],
+      ["D18", "boot_params.hdr starts from the kernel's own setup header; kernels without XLF_KERNEL_64 are rejected with exit 2 instead of a triple fault."],
+      ["D19", "The initrd must start above max(kernel_end, load_addr + init_size): the kernel decompresses in place and would overwrite it."],
+      ["D20", "linux-loader's boot_params lacks ByteValued, and the orphan rule forbids implementing it, so a #[repr(transparent)] newtype carries a documented unsafe impl."]
+    ],
+    say: "There's no BIOS. I write the state the CPU would be in after a boot loader finished, and the guest's first instruction is already 64-bit kernel code.",
+    probe: "Why must the GDT in memory and the segment registers you pass to KVM_SET_SREGS agree, even though KVM never reads the GDT?" },
+
+  { id: "smp", title: "SMP description", sub: "MP table · CPUID · APs", x: 660, y: 45, w: 310, h: 80,
+    files: "src/arch/x86_64/mptable.rs · regs.rs (set_cpuid_topology, set_lint_modes)",
+    what: "Linux learns about CPUs from an Intel MP table at 0x9fc00: one processor entry per vCPU, the ISA bus, the IOAPIC, 16 IRQ routing entries, and LINT0 = ExtINT, LINT1 = NMI. Each vCPU gets its own CPUID topology. Only vCPU 0 gets registers; the APs sit in KVM's wait-for-SIPI state until Linux sends INIT/SIPI, which the in-kernel LAPIC handles.",
+    decisions: [
+      ["D9", "MP table built as a little-endian byte vector with checksums and a unit test that re-parses it: no packed structs, no unsafe."],
+      ["Spec", "Written in every boot, even with one vCPU, so IRQs always route through the IOAPIC. This changed a Phase 1 rule; AC-0.5 re-runs all of Phase 1 to prove nothing broke."],
+      ["D10", "Leaves 1, 4, 0xB, 0x1F rewritten for 1 socket × N cores, 1 thread/core, APIC ID = vCPU index. AMD leaves left alone: untestable on the Intel host."],
+      ["D32", "HTT cleared for N = 1; only L3 counted as shared; only subleaves KVM reports are rewritten; raw mode goes through the same path as vCPU 0 of 1."],
+      ["D35", "AC-6.4 boots disk + TAP + 4 vCPUs ten times; each reaches the init marker in about 4 s."]
+    ],
+    say: "SMP is mostly description. KVM runs the CPUs; my job is to tell Linux a consistent story about them in the MP table and CPUID.",
+    probe: "If you set boot registers on vCPU 2 as well, what would happen?" },
+
+  { id: "irqchip", title: "In-kernel irqchip + PIT", sub: "PIC · IOAPIC · LAPIC", x: 30, y: 188, w: 300, h: 58,
+    files: "src/vm.rs (setup_irqchip) · regs.rs (setup_lapic)",
+    what: "KVM_CREATE_IRQCHIP and KVM_CREATE_PIT2 put the interrupt controllers and timer in the kernel because the guest touches them constantly. Created only in boot mode and before any vCPU, so each vCPU gets an in-kernel LAPIC.",
+    decisions: [
+      ["Spec", "Raw mode creates no irqchip: with one, KVM handles HLT itself and never returns KVM_EXIT_HLT, so a raw guest's cli; hlt would hang forever."],
+      ["Pitfall", "KVM_SET_TSS_ADDR (0xfffbd000) before the first KVM_RUN on Intel; irqchip before vCPUs."],
+      ["D21", "Phase 1 left LINT0/LINT1 to Linux (virtual-wire via PIC). Phase 2 programs them per vCPU (LINT0 ExtINT, LINT1 NMI) to match the MP table."],
+      ["Q", "KVM's default routing sends GSIs 0–15 to both PIC and IOAPIC, so one irqfd per IRQ works for either routing mode."]
+    ],
+    say: "Anything hot stays in the kernel. My process only sees exits for devices I emulate.",
+    probe: "Why does the guest's idle HLT never reach your run loop in boot mode, and what does that mean for host input?" },
+
+  { id: "notify", title: "ioeventfd / irqfd", sub: "QueueNotify in · IRQ out", x: 350, y: 188, w: 300, h: 58,
+    files: "src/vm.rs (attach_virtio) · src/devices/virtio/mod.rs (Interrupt)",
+    what: "Two eventfd shortcuts through KVM. KVM_IOEVENTFD: a 4-byte guest write of queue index i to base + 0x50 signals an eventfd inside KVM, with no exit to user space. KVM_IRQFD: writing an eventfd raises a GSI (4 serial, 5 blk, 6 net) in the in-kernel irqchip, even while the vCPU sleeps in KVM_RUN.",
+    decisions: [
+      ["Q1", "Notifications go to ioeventfd + event loop, not the vCPU thread: net RX needs an event loop anyway, vCPUs never block on disk/TAP I/O, and the vCPU seccomp filter stays tiny (no pread/pwrite)."],
+      ["Spec", "One ioeventfd per queue, data-matched on the queue index (blk 0; net RX 0, TX 1)."],
+      ["D19", "InterruptStatus / InterruptACK are served from an atomic, never under the transport lock, so the guest's interrupt handler never waits behind disk I/O."],
+      ["D4", "Always interrupt after using buffers; VIRTQ_AVAIL_F_NO_INTERRUPT is only a hint, and ignoring it removes a lost-wakeup risk."]
+    ],
+    say: "The doorbell and the interrupt both bypass my process's exit path. That's why the main thread, not the vCPU, does the I/O.",
+    probe: "What's the difference between edge and level here, and what would an interrupt storm look like?" },
+
+  { id: "exitloop", title: "vCPU threads ×1–4", sub: "run loop · PIO/MMIO bus", x: 30, y: 310, w: 240, h: 80,
+    files: "src/vcpu.rs · devices/{pio_bus,mmio_bus,serial,i8042}.rs",
+    what: "Each vCPU loops on KVM_RUN and dispatches exits: port I/O to the PioBus (COM1 0x3f8–0x3ff, i8042 0x60–0x64), MMIO to the MmioBus (virtio transports), HLT, SHUTDOWN. EINTR/EAGAIN are retried after re-checking the stop flag. Unclaimed ports read 0xFF and ignore writes, because Linux probes lots of absent hardware.",
+    decisions: [
+      ["D4 (P1)", "A small PioDevice trait and a linear-scan bus, since vm-device isn't on the allowed crate list and there are two devices."],
+      ["D5 (P1)", "A wide IN/OUT to the UART splits byte i to register offset + i; anything past 8 registers reads 0xFF."],
+      ["D16 (P1)", "The UART is Arc<Mutex<…>> shared with the stdin thread; a full 64-byte RX FIFO makes stdin wait 1 ms and retry instead of dropping bytes."],
+      ["Spec", "i8042 0xFE on port 0x64 = reset → exit 0. SHUTDOWN (triple fault) is exit 0 in boot (Linux's last-resort reset) but exit 1 in raw (always a setup bug)."],
+      ["D25", "An ExitGuard records 'vCPU ended unexpectedly' if the thread panics, so the event loop can never hang waiting."]
+    ],
+    say: "The guest only reaches my code through VM exits, and every exit has a defined answer. Nothing it sends can panic the loop.",
+    probe: "For an IN exit, how does the value you write into `data` end up in the guest's RAX?" },
+
+  { id: "transport", title: "virtio-mmio transport", sub: "registers · features · status", x: 290, y: 310, w: 240, h: 80,
+    files: "src/devices/virtio/mmio.rs",
+    what: "Register layout version 2: magic \"virt\", device ID, feature words, queue select/size/addresses, Status, InterruptStatus/ACK and config space at 0x100. It runs the feature negotiation and status state machine and validates queues at DRIVER_OK.",
+    decisions: [
+      ["D3", "Version 2 only: VIRTIO_F_VERSION_1 is required, and legacy adds page-size/PFN registers for nothing."],
+      ["Q3", "blk offers VERSION_1, FLUSH (and RO with --disk-ro). net offers VERSION_1, MAC. Nothing else: no offloads, no MRG_RXBUF, no EVENT_IDX, no INDIRECT."],
+      ["Code", "FEATURES_OK is refused if the driver asks for an unoffered bit or omits VERSION_1. DRIVER_OK with an invalid queue sets NEEDS_RESET and raises a config interrupt."],
+      ["D22", "After DRIVER_OK, queue registers and driver features are frozen until reset, because the event loop relies on the layout validated at activation."],
+      ["D5", "A corrupt ring (avail.idx jump > size, head ≥ size) stops the queue and sets NEEDS_RESET; one bad chain only fails that request."]
+    ],
+    say: "Feature negotiation is where the guest agrees to my rules. I only offer what I've implemented and proven, and I refuse anything else.",
+    probe: "Why freeze the queue registers after DRIVER_OK instead of accepting writes at any time?" },
+
+  { id: "threads", title: "Main thread: event loop", sub: "epoll · stop · kick · join", x: 550, y: 310, w: 240, h: 80,
+    files: "src/event_loop.rs · src/lib.rs (run_boot) · vcpu.rs (stop_all)",
+    what: "After setup, main runs an event-manager epoll loop over the queue ioeventfds, the TAP and an exit eventfd. When any thread records the VM's outcome (first writer wins), main sets a stop flag, sends SIGRTMIN to unfinished vCPU threads every 10 ms, and joins them within 5 s.",
+    decisions: [
+      ["D1", "Main = setup then event loop; one thread per vCPU; a stdin thread. No special-cased vCPU 0."],
+      ["D18", "The vCPU moved off main in M4, not M6, because KVM_RUN blocks and the event loop needs its own thread. M6 then only generalised 1 → N."],
+      ["D2", "Stop flag checked before every KVM_RUN plus a no-op SIGRTMIN handler without SA_RESTART, so KVM_RUN returns EINTR. Resending every 10 ms closes the race of a signal landing just before KVM_RUN."],
+      ["D34", "If a vCPU thread fails to spawn after others started, the error goes through the same stop/join path; no thread is ever left running."],
+      ["D15", "event-manager (allowed by the spec) over raw vmm_sys_util epoll."]
+    ],
+    say: "Shutdown is the hard part of multithreading here: an idle vCPU is asleep inside the kernel, so I have to kick it out before I can join it.",
+    probe: "Why not just call exit() when the guest reboots?" },
+
+  { id: "core", title: "queue.rs + parse.rs", sub: "pure · untrusted input", x: 290, y: 410, w: 240, h: 80,
+    files: "src/devices/virtio/queue.rs · parse.rs",
+    what: "The split virtqueue and the request parsers, written as pure functions over a 3-method GuestMem trait (size, read, write) with no KVM. Every structure is read exactly once into a local copy and checked, which defeats time-of-check/time-of-use by other guest vCPUs.",
+    decisions: [
+      ["Q2", "Our own minimal virtqueue instead of the virtio-queue crate: its iterator stops after N steps instead of rejecting a loop (fails AC-8.2(d)), and its types depend on vm-memory, which Kani can't run on."],
+      ["D16", "GuestMem implemented by GuestMemoryMmap (production), KaniMem (symbolic) and VecMem (fuzz, unit tests)."],
+      ["D42/D44", "walk_chain is count-based: reject once a chain still has NEXT after `size` descriptors. The check comes after adding, so the body runs at most `size` times and Kani can prove termination with unwind 5."],
+      ["Code", "pop: pending = avail.idx − next_avail (wrapping); pending > size → Broken. An Acquire fence after reading avail.idx; a Release fence before publishing used.idx."],
+      ["D23", "Fixed blk layout: header, data…, status. FLUSH with data and non-512-multiple lengths → IOERR. Linux always uses this layout; documented as a limitation."]
+    ],
+    say: "This is the attack surface, so I made it small, pure and checkable. Everything the guest controls passes through about 580 lines of non-test code that Kani can see.",
+    probe: "Walk me through every check between a guest's descriptor and a pread on the host file." },
+
+  { id: "verify", title: "Kani + fuzzing", sub: "7 proofs · libFuzzer", x: 30, y: 410, w: 240, h: 80,
+    files: "src/devices/virtio/proofs.rs · fuzz/fuzz_targets/blk_request.rs",
+    what: "Seven Kani harnesses prove, for every input within bounds (queue size 4, symbolic descriptors, memory size and disk capacity): no panics or overflow, every accepted range inside RAM and the disk, bounded termination, INDIRECT rejected, ring accesses inside the rings, TX header zeroed. A cargo-fuzz target runs the whole blk path (pop → walk → parse → add_used) with queue size 16 for 300 s.",
+    decisions: [
+      ["Q5", "KaniMem: symbolic size and arbitrary bytes on every in-bounds read, so no 2^64-byte array and a faithful model of concurrent rewrites."],
+      ["D43", "Branch over concrete chain lengths 0..=4 instead of a symbolic-length Vec: same coverage, about 1 minute instead of 15+."],
+      ["D45", "Harness bookkeeping in fixed-size arrays, because a loop over a Vec failed Kani's unwinding assertions."],
+      ["Notes", "Mutation check: removing the INDIRECT rejection or the TX upper bound makes the matching harness fail. A proof that can't fail proves nothing."],
+      ["D13/D47", "Fuzz input = 8-byte capacity + 64 KiB memory image; the verify script fuzzes a temp copy of the corpus and checks its checksums are unchanged."]
+    ],
+    say: "Kani gives me 'for all inputs' at a small bound; fuzzing gives breadth at a realistic size. Neither found a bug in the code, and I checked the harnesses can fail.",
+    probe: "What do your proofs not cover?" },
+
+  { id: "blk", title: "virtio-blk", sub: "file I/O", x: 550, y: 410, w: 115, h: 80,
+    files: "src/devices/virtio/block.rs · lib.rs (open_disk)",
+    what: "Moves data between guest RAM and the host image file with read_at/write_at through one reused 64 KiB bounce buffer. FLUSH → fdatasync. Writes status, completes the chain, raises IRQ 5.",
+    decisions: [
+      ["D6", "A fixed 64 KiB bounce buffer: one descriptor can claim 4 GiB, so per-descriptor allocation would let the guest drive host memory use. Chunking also needs no unsafe."],
+      ["Spec", "OUT on a read-only disk → VIRTIO_BLK_S_IOERR without touching the file, even if the guest ignores VIRTIO_BLK_F_RO. GET_ID and unknown types → UNSUPP."],
+      ["D5", "A malformed chain is completed with used length 0, plus IOERR if it has a usable status byte, so the ring keeps moving."],
+      ["D20", "Disk checks (exists, regular file, size a non-zero multiple of 512) run first in run_boot, before /dev/kvm is opened, so exit-2 errors don't depend on KVM."],
+      ["AC-4.6", "32 MiB random file written in the guest, extracted on the host with debugfs, sha256 must match."]
+    ],
+    say: "The device enforces read-only, not the guest's good manners.",
+    probe: "Why can't the guest make the VMM allocate unbounded memory through a disk request?" },
+
+  { id: "net", title: "virtio-net", sub: "TAP", x: 675, y: 410, w: 115, h: 80,
+    files: "src/devices/virtio/net.rs · src/devices/tap.rs · scripts/setup-tap.sh",
+    what: "Two queues: RX (VMM fills guest buffers with frames from the TAP) and TX (guest frames to the TAP). The TAP is opened with IFF_TAP | IFF_NO_PI | IFF_VNET_HDR, header size 12, offloads off. The TX header is zeroed before it reaches the host kernel.",
+    decisions: [
+      ["D7/D26", "RX flow control: a frame is read from the TAP only when has_available shows a waiting chain; the TAP is unwatched when the guest runs dry. Level-triggered epoll would otherwise spin at 100% CPU."],
+      ["D27", "RX header: keep the TAP's 10 filled bytes and set num_buffers = 1, as virtio requires without MRG_RXBUF."],
+      ["D8", "TX on a full TAP (EAGAIN): drop and complete. Ethernet may drop frames, and the event loop never blocks."],
+      ["D17", "Check /sys/class/net/<name> before TUNSETIFF: without CAP_NET_ADMIN a missing name fails with EPERM, which reads like a permission problem."],
+      ["D28/D30", "Net<T: Read + Write> with a FakeTap for unit tests; a local 40-byte ifreq struct with tests pinning its layout instead of unsafe union access."]
+    ],
+    say: "Header fields are instructions to the host kernel, like 'segment this' or 'checksum from here'. The guest negotiated none, so I zero them.",
+    probe: "Why does setup-tap.sh need sudo while the VMM doesn't?" },
+
+  { id: "seccomp", title: "seccomp allowlists, one per thread kind", sub: "KILL_PROCESS · NO_NEW_PRIVS · strace-derived", x: 30, y: 505, w: 760, h: 40,
+    files: "src/seccomp.rs · tests/m7_seccomp.rs · notes/phase-2.md (allowlists)",
+    what: "Main, vCPU and stdin threads each install their own seccompiler filter before touching guest-controlled data. A syscall outside the list kills the process with SIGSYS. Only vCPUs may ioctl(KVM_RUN); only main may pread/pwrite/fdatasync and tgkill; no thread may open, socket, execve or clone.",
+    decisions: [
+      ["Pitfall 9", "Lists derived from strace -f -ff traces covering every device path and a SIGTERM exit, assigned to threads by their PR_SET_NAME line."],
+      ["D36", "TCGETS allowed alongside TCSETS: glibc's tcsetattr issues TCGETS, TCSETS, TCGETS. With TCSETS alone the terminal-restoring signal handler would kill the VMM."],
+      ["D37", "The allocator family (mmap, mprotect, munmap, madvise, brk, mremap) on every thread, because which one malloc calls depends on heap state. mmap/mprotect are argument-filtered: never PROT_EXEC."],
+      ["D38/D39", "Boot mode only (raw runs inside the test harness). A filter that fails to install ends the VM with exit 1: fail closed."],
+      ["D48", "WSL2 started giving every process an inherited filter; tests now count Seccomp_filters against the inherited baseline."]
+    ],
+    say: "The filter is installed by each thread itself, because seccomp is per-thread and inherited at creation. no_new_privs is set once before any spawn so all threads inherit it.",
+    probe: "A guest gets code execution on a vCPU thread. What can it still do?" }
+];
+
+const STATIC = [
+  { title: "Linux 6.12 guest", sub: "virtio_blk · virtio_net · 8250", x: 340, y: 45, w: 300, h: 80 },
+  { title: "Guest RAM, slot 0", sub: "user memory region · ≤ 3 GiB", x: 670, y: 188, w: 300, h: 58 },
+  { title: "Terminal", sub: "stdin thread · stdout", x: 840, y: 310, w: 135, h: 58 },
+  { title: "disk.ext4", sub: "64 MiB · pread/pwrite", x: 840, y: 386, w: 135, h: 58 },
+  { title: "TAP vmtap0", sub: "172.16.0.1/24", x: 840, y: 462, w: 135, h: 58 }
+];
+
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function text(parent, x, y, cls, str) { const t = el("text", { x, y, class: cls }, parent); t.textContent = str; return t; }
+
+function buildDiagram() {
+  const svg = document.getElementById("svg");
+  const bands = [
+    { y: 10, h: 130, x: 10, w: 980, fill: "var(--band-guest)", label: "GUEST · UNTRUSTED" },
+    { y: 155, h: 105, x: 10, w: 980, fill: "var(--band-kvm)", label: "HOST KERNEL · KVM" },
+    { y: 275, h: 280, x: 10, w: 800, fill: "var(--band-vmm)", label: "VMM PROCESS · vmm (runs as a normal user)" },
+    { y: 275, h: 280, x: 825, w: 165, fill: "var(--band-guest)", label: "HOST RESOURCES" }
+  ];
+  bands.forEach(b => {
+    el("rect", { x: b.x, y: b.y, width: b.w, height: b.h, rx: 6, fill: b.fill }, svg);
+    text(svg, b.x + 12, b.y + 20, "band-label", b.label);
+  });
+  // edges (drawn under the nodes)
+  const edges = [
+    { d: "M150 310 V246", label: "KVM_RUN · exits", lx: 158, ly: 285 },
+    { d: "M500 246 V262 H670 V310", label: "eventfds", lx: 600, ly: 256 },
+    { d: "M410 310 V246", label: "", lx: 0, ly: 0 },
+    { d: "M410 390 V410", label: "", lx: 0, ly: 0 },
+    { d: "M530 450 H550", label: "", lx: 0, ly: 0 },
+    { d: "M270 450 H290", label: "", lx: 0, ly: 0, dash: true },
+    { d: "M180 188 V140", label: "IRQs · exits", lx: 188, ly: 166 }
+  ];
+  edges.forEach(e => {
+    const p = el("path", { d: e.d, class: "edge" }, svg);
+    if (e.dash) p.setAttribute("stroke-dasharray", "4 3");
+    if (e.label) text(svg, e.lx, e.ly, "edge-label", e.label);
+  });
+  STATIC.forEach(n => {
+    const g = el("g", { class: "static" }, svg);
+    el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 5 }, g);
+    text(g, n.x + 12, n.y + 24, "t", n.title);
+    text(g, n.x + 12, n.y + 42, "s", n.sub);
+  });
+  COMPONENTS.forEach(c => {
+    const g = el("g", { class: "node", tabindex: "0", role: "button", "data-id": c.id, "aria-label": c.title }, svg);
+    el("rect", { x: c.x, y: c.y, width: c.w, height: c.h, rx: 5 }, g);
+    const tall = c.h >= 58;
+    text(g, c.x + 12, c.y + (tall ? 26 : 25), "t", c.title);
+    if (tall) text(g, c.x + 12, c.y + 46, "s", c.sub);
+    g.addEventListener("click", () => selectComp(c.id));
+    g.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); selectComp(c.id); } });
+  });
+  const chips = document.getElementById("compChips");
+  COMPONENTS.forEach(c => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.dataset.id = c.id; b.textContent = c.title.replace(/,.*$/, "");
+    b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", () => selectComp(c.id));
+    chips.appendChild(b);
+  });
+}
+
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+function selectComp(id) {
+  const c = COMPONENTS.find(x => x.id === id) || COMPONENTS[0];
+  document.querySelectorAll(".node").forEach(n => n.classList.toggle("on", n.dataset.id === c.id));
+  document.querySelectorAll("#compChips .chip").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.id === c.id)));
+  const panel = document.getElementById("compPanel");
+  panel.innerHTML = `
+    <div class="block" style="gap:4px">
+      <h3>${esc(c.title)}</h3>
+      <div class="files">${esc(c.files)}</div>
+    </div>
+    <p style="margin:0">${esc(c.what)}</p>
+    <div class="dlist">${c.decisions.map(d => `<div><span class="dtag">${esc(d[0])}</span><span>${esc(d[1])}</span></div>`).join("")}</div>
+    <div class="say"><b>One sentence to say</b>${esc(c.say)}</div>
+    <p class="hint" style="margin:0"><b>Explain without notes:</b> ${esc(c.probe)}</p>`;
+  try { localStorage.setItem("mvm-comp", c.id); } catch (e) {}
+}
+buildDiagram();
+let savedComp = "core";
+try { savedComp = localStorage.getItem("mvm-comp") || "core"; } catch (e) {}
+selectComp(savedComp);
+
+/* ---------- weak spots ---------- */
+const RISKS = [
+  { sev: "high", t: "\"You built a VMM in three days?\"",
+    b: "Phases 1 and 2 were committed between Sep 28 and Sep 30 with Claude Code. Expect the ownership question from Ch. 13.8: \"whoever commits agent-written code is responsible for it.\"",
+    s: "Edit this to match what you actually did; the repo only shows that specs are 'human-owned' and plans 'agent-drafted, human-approved'. A template: I wrote and owned the specs and acceptance criteria, answered the open questions, approved each plan and each milestone, and approved the one spec change. The agent drafted the plans and wrote most of the code against them. What I'm accountable for is that I can explain every decision, and I'm happy to be tested on any file." },
+  { sev: "high", t: "The Phase 2 spec still says ACTIVE",
+    b: "The phase-2-complete tag and the v0.2.0 release exist, but SPEC.md's table and specs/phase-2/SPEC.md both still show Phase 2 as ACTIVE. Phase 1 was marked COMPLETE in its own commit (2f71b9c). This is a small case of spec drift, the chapter's central failure mode.",
+    s: "Fix it before the interview (a two-line spec change), or name it yourself: \"The one piece of drift I know of is the status line; Phase 1 got a closing commit and Phase 2 didn't.\"" },
+  { sev: "high", t: "D48 changed tests, not the spec",
+    b: "After a WSL2 update, the seccomp tests measured the wrong thing. The tests changed and the spec text didn't. A sharp reviewer may ask whether that's patching around the spec.",
+    s: "The spec says what must hold: each thread installs a filter; --no-seccomp installs none. It never said how to measure that. The environment broke the measurement, and in one case made a test pass vacuously. I fixed the measurement and logged it as D48. If the spec had been wrong, I'd have changed the spec, like I did for AC-8.2(d)." },
+  { sev: "med", t: "Proofs are bounded and partial",
+    b: "Kani covers queue size 4 only. The transport, file I/O, net RX scatter, event loop, MP table, CPUID and seccomp are unproven. has_available and parse_net_rx have no harness. Memory ordering and lost notifications are out of scope.",
+    s: "Lead with the scope: the proofs cover what the guest controls. Then say what's next: the transport state machine and parse_net_rx." },
+  { sev: "med", t: "Seccomp threads share one address space",
+    b: "Per-thread filters look like isolation, but threads share memory. Code execution on a vCPU thread could corrupt data the main thread later uses, and so borrow main's syscalls indirectly. write is allowed on any fd a thread holds.",
+    s: "Seccomp shrinks the kernel attack surface; it isn't a sandbox between threads. Real isolation needs a jailer (chroot, namespaces, dedicated uid, cgroups), which Phase 2 put out of scope. Firecracker uses both." },
+  { sev: "med", t: "\"No bugs found\" can sound like weak tests",
+    b: "Neither Kani nor the fuzzer found a bug in VMM code.",
+    s: "The harnesses were mutation-checked: removing the INDIRECT rejection or the TX length bound makes them fail. Kani did find two real issues, both in the spec and harness rather than the code: the AC-8.2(d) wording, and a 15-minute proof." },
+  { sev: "med", t: "\"Firecracker-like\" is a stretch",
+    b: "There's no API socket, jailer, snapshots, rate limiters, vsock or balloon.",
+    s: "Firecracker-like in architecture: KVM, rust-vmm crates, virtio-mmio instead of PCI, no BIOS, per-thread seccomp, minimal devices. Production features are listed as out of scope in the spec on purpose." },
+  { sev: "med", t: "Intel-only CPUID topology; fixed blk layout",
+    b: "AMD topology leaves are left as the host reports them (D10). The blk parser only accepts header/data/status in separate descriptors (D23).",
+    s: "Both were deliberate, logged, and scoped to what could be tested on the development host. Linux's driver always uses that layout; another driver might not." }
+];
+document.getElementById("riskList").innerHTML = RISKS.map(r => `
+  <div class="card risk">
+    <span class="sev ${r.sev}">${r.sev === "high" ? "Expect this" : "Be ready"}</span>
+    <h3>${esc(r.t)}</h3>
+    <p style="margin:0">${esc(r.b)}</p>
+    <div class="say"><b>How to say it</b>${esc(r.s)}</div>
+  </div>`).join("");
+
+/* ---------- drill ---------- */
+const Q = [
+  // SDD process
+  ["sdd", "Walk me through your spec-driven workflow with one concrete artifact for each of the five phases.",
+   "<p>Spec: <code>specs/phase-2/SPEC.md</code>, with goal, constraints, I/O, 35 pass/fail ACs and an output-file list, reviewed before planning (<code>6cd8a4a</code>). Plan: <code>PLAN.md</code> plus decisions D1–D18, approved and committed (<code>d28915a</code>). Implement: one commit per milestone, M4 to M8. Verify: <code>verify-phase-2.sh</code>, one PASS/FAIL line per AC, which also re-runs Phase 1 (AC-0.5). Iterate: the AC-8.2(d) rewording after a Kani counterexample (<code>7f2dd3d</code>).</p>",
+   "git log --oneline · specs/phase-2/"],
+  ["sdd", "Give me an example where you fixed the spec instead of the code. Why was that right?",
+   "<p>AC-8.2(d). Kani showed that if the guest rewrites a descriptor mid-walk, a revisited index can end the chain early. That's bounded and safe, because each descriptor is read once into a local copy and checked. Adding a visited-set to the code would add state for no safety gain and change behaviour beyond the spec. The claim was too strong, so the spec now states two properties: bounded termination for any table, and revisit rejection for a stable table.</p>",
+   "7f2dd3d · DECISIONS D42"],
+  ["sdd", "D48 changed your seccomp tests but not the spec. Isn't that patching around the spec?",
+   "<p>No. The spec states the property (each thread installs a filter; <code>--no-seccomp</code> installs none). It never specified the measurement. A WSL2 update gave every process an inherited filter, so <code>Seccomp: 2</code> passed even without the VMM's filter, and <code>Seccomp: 0</code> could never hold. Counting <code>Seccomp_filters</code> against the test process's baseline measures what the VMM installed. The change is logged with options and reasons.</p>",
+   "af797bd · D48 · tests/m7_seccomp.rs"],
+  ["sdd", "How did you prevent scope creep? Give two concrete cases.",
+   "<p>The spec has an output-file list and an out-of-scope list, and CLAUDE.md forbids starting the next milestone without approval. Cases: D3 kept <code>--mode long</code> out of the M1 CLI; D9 deferred the MP table to M6 even though M4 had new IRQs; D12 duplicated ~40 lines of test helpers rather than add a file not in the list.</p>",
+   "specs/phase-1/DECISIONS.md D3, D12 · phase-2 D9"],
+  ["sdd", "Which acceptance criterion is hardest to fake, and why?",
+   "<p>AC-4.6: the guest writes 32 MiB from <code>/dev/urandom</code> and records its sha256; after the VMM exits, the host extracts the file from the image with <code>debugfs</code> and compares. Nothing inside the VMM is trusted for the check. Another is AC-3.6, which runs <code>stty echo</code> first so a VMM that never restored the terminal can't pass by accident (D22).</p>",
+   "specs/phase-2/SPEC.md · phase-1 D22"],
+  ["sdd", "Your spec has 'Known pitfalls' and 'Resolved questions' sections that aren't in the chapter's five elements. Why add them?",
+   "<p>Pitfalls are facts about KVM and x86, not choices: irqchip before vCPUs, TSS before KVM_RUN, CPUID before long mode, vnet header size. Without them, an agent rediscovers each one as an opaque triple fault or a hang. 'PLAN.md must address each one' turns them into a plan checklist. Resolved questions record how ambiguity was settled before planning, so it isn't settled ad hoc in code.</p>",
+   "SPEC.md 'Known pitfalls'"],
+  ["sdd", "How do you know the agent didn't just write tests that pass?",
+   "<p>The ACs were written before the code. The checks observe from outside the VMM: <code>debugfs</code>, sha256, <code>/proc/&lt;pid&gt;/task/*/status</code>, exit codes, the guest's own <code>/sys</code>. The verify script fails if any AC lacks a check line (D47). The Kani harnesses were mutation-tested. And D48 is a case where I found a test passing vacuously and fixed it.</p>",
+   "D47 · D48 · notes/phase-2.md"],
+  ["sdd", "Where did spec-driven development struggle on this project?",
+   "<p>On discovery work, which the chapter predicts. Seccomp allowlists can't be specified from the code; they came from <code>strace</code> traces. Kani performance needed experimentation (D43) and the spec had a fallback bound ready (Q5). And Kani showed the spec's own property was too strong under concurrency.</p>",
+   "D36, D43, D42"],
+  ["sdd", "Which of your CLAUDE.md rules would you turn into a hook, and why?",
+   "<p>fmt and clippy at every commit. CLAUDE.md is prose the model might skim past; a pre-commit hook runs every time. It's also the chapter's preview of CI. The SAFETY-comment rule is already enforced mechanically by <code>clippy::undocumented_unsafe_blocks</code>.</p>",
+   "CLAUDE.md · src/lib.rs lints"],
+
+  // ownership
+  ["own", "Without looking: what happens if I delete the Release fence in add_used?",
+   "<p>The used element and <code>used.idx</code> are both written into guest memory. Without the fence, the compiler (and on weaker architectures, the CPU) may make <code>used.idx</code> visible before the element, so the driver reads a stale id/len and completes the wrong request. On x86, stores aren't reordered with other stores, so the practical risk there is compiler reordering, but the fence states the protocol's ordering requirement and pairs with the driver's read barrier.</p>",
+   "queue.rs add_used"],
+  ["own", "Why does walk_chain reject at 'more than size descriptors' rather than tracking visited indices?",
+   "<p>A chain in a table of <code>size</code> entries that's longer than <code>size</code> must repeat an index, so the count catches every loop in a stable table with no extra state. Under concurrent rewrites, a visited-set wouldn't add safety: each descriptor is already copied once and checked, and the walk is bounded. The check sits after adding a descriptor so the loop body runs at most <code>size</code> times, which lets Kani prove termination with unwind 5.</p>",
+   "queue.rs walk_chain · D42, D44"],
+  ["own", "Open queue.rs: why is pending > size 'Broken' for the whole queue, but a bad descriptor only fails one request?",
+   "<p><code>avail.idx − next_avail</code> can never legitimately exceed the queue size, so a bigger jump means the ring's indices are corrupt and the device can't tell which slots are real. There's no safe way forward, so it sets NEEDS_RESET (D5). A bad chain is contained: complete it with length 0 (and IOERR if there's a status byte) and the ring keeps moving.</p>",
+   "queue.rs pop · mmio.rs process_queue"],
+  ["own", "Why does pop use wrapping_sub and % size?",
+   "<p>The indices are free-running u16 counters that wrap at 65536, by the virtio spec. wrapping_sub gives the correct distance across the wrap; plain subtraction would panic in debug builds. <code>% size</code> maps a counter to a slot, and is correct because the size is a power of two that divides 65536 (checked in <code>is_valid</code>).</p>",
+   "queue.rs pop, is_valid"],
+
+  // KVM / x86
+  ["kvm", "List the ioctls from opening /dev/kvm to the first KVM_RUN of a Linux boot, and the ordering constraints.",
+   "<p>Open → GET_API_VERSION (must be 12) → CHECK_EXTENSION → CREATE_VM → SET_TSS_ADDR → SET_USER_MEMORY_REGION → CREATE_IRQCHIP → CREATE_PIT2 → (load kernel, initrd, cmdline, boot_params, MP table) → CREATE_VCPU ×N → SET_CPUID2 → GET/SET_LAPIC → SET_SREGS + SET_REGS on vCPU 0 → IRQFD (COM1, blk, net) → IOEVENTFD per queue → KVM_RUN on each thread. Constraints: irqchip before vCPUs; TSS before the first run; CPUID before long-mode SREGS; ioeventfds before vCPUs start.</p>",
+   "src/vm.rs · src/lib.rs run_boot"],
+  ["kvm", "Why cap guest RAM at 3 GiB?",
+   "<p>It keeps RAM below the 32-bit MMIO hole, so one memory slot covers all RAM and nothing has to be split around device addresses: the virtio windows at 0xd000_0000, the IOAPIC at 0xfec0_0000, the LAPIC at 0xfee0_0000 and KVM's TSS at 0xfffbd000. Addresses with no slot exit as KVM_EXIT_MMIO, which is how the virtio windows work. Two compile-time asserts pin this: the MMIO base is above max RAM, and the net window ends below the IOAPIC.</p>",
+   "src/arch/x86_64/mod.rs:54-55 · src/vm.rs MAX_MEM_MIB"],
+  ["kvm", "What is a triple fault, and why is KVM_EXIT_SHUTDOWN exit 0 in boot mode but exit 1 in raw mode?",
+   "<p>A fault while delivering a double fault; real hardware resets the CPU, and KVM reports SHUTDOWN. Linux uses it deliberately as its last-resort reboot if the i8042 reset doesn't work, so in boot mode it means 'reset me'. A raw test guest never asks to reset, so there it can only mean broken GDT or page tables: a bug.</p>",
+   "notes/phase-1.md · vcpu.rs"],
+  ["kvm", "Why does the stdin reader need its own thread at all?",
+   "<p>When the guest idles it executes HLT, and with an in-kernel LAPIC, KVM parks the vCPU thread inside KVM_RUN until an interrupt is pending. That interrupt is the keystroke. One thread can't both block in KVM_RUN and read stdin. The stdin thread puts bytes in the UART FIFO and writes the irqfd, which injects IRQ 4 into the halted vCPU without the vCPU thread's help.</p>",
+   "devices/serial.rs · phase-1 Q3"],
+  ["kvm", "Why is the vCPU's hidden segment state written directly, and why still build a GDT?",
+   "<p>KVM_SET_SREGS loads the hidden part of each segment register (base, limit, L/D bits) directly; the GDT isn't read then. The GDT matters when the guest reloads a selector, which Linux does early. If they disagree, the guest runs at first and triple-faults later. Both are built from the same descriptor values.</p>",
+   "arch/x86_64/gdt.rs"],
+
+  // virtio
+  ["virtio", "Why virtio rather than emulating real hardware like an IDE disk or an e1000 NIC?",
+   "<p>Real hardware is driven register by register, so every operation costs many VM exits and a lot of emulation code (more attack surface). Virtio puts requests in shared rings in guest RAM, batches them, and needs one doorbell write, which KVM turns into an eventfd without an exit. The device model is small enough to prove properties about.</p>",
+   "devices/virtio/"],
+  ["virtio", "Explain the three parts of a split virtqueue and who writes each.",
+   "<p>Descriptor table: the driver writes buffer descriptions (addr, len, flags, next). Available ring: the driver writes chain heads and bumps <code>avail.idx</code>; the device only reads it. Used ring: the device writes (head id, bytes written) and bumps <code>used.idx</code>; the driver reads it. Ownership is one-directional per structure, which is what makes the fences sufficient.</p>",
+   "queue.rs"],
+  ["virtio", "Why does InterruptStatus bypass the transport mutex?",
+   "<p>The event loop holds the transport lock while it does disk I/O. If reading InterruptStatus took the same lock, the guest's interrupt handler on a vCPU thread would stall behind an fdatasync. The status lives in an atomic shared by the transport and the MMIO entry; reads and ACKs go straight to it (D19).</p>",
+   "mmio.rs MmioTransport · D19"],
+  ["virtio", "What do you do if the driver sets DRIVER_OK with a queue whose rings fall outside RAM?",
+   "<p>The device doesn't activate. It sets NEEDS_RESET in Status and raises a config-change interrupt. NEEDS_RESET stays until the driver writes Status = 0. <code>is_valid</code> checks power-of-two size ≤ 256, ring alignment, and each ring entirely inside RAM, including the trailing event fields.</p>",
+   "mmio.rs write_status · queue.rs is_valid"],
+
+  // net
+  ["net", "Why does setup-tap.sh need sudo but the VMM doesn't?",
+   "<p>Creating a TAP interface needs CAP_NET_ADMIN. The script creates it with <code>user $SUDO_USER</code>, so the kernel lets that user attach with TUNSETIFF unprivileged. The VMM only opens an existing TAP, which keeps the 'never requires root' constraint. Privileged setup stays a deliberate human step.</p>",
+   "scripts/setup-tap.sh · Q6"],
+  ["net", "What breaks if TUNSETVNETHDRSZ isn't set to 12?",
+   "<p>The TAP defaults to the 10-byte legacy header, but with VERSION_1 the guest always uses 12 bytes. Every TX frame would reach the host with 2 header bytes read as the start of the destination MAC, and RX frames would land 2 bytes early. Nothing crashes; nothing works.</p>",
+   "devices/tap.rs · Q3"],
+
+  // SMP
+  ["smp", "If every vCPU reported APIC ID 0 in CPUID, what would go wrong?",
+   "<p>The MP table and the in-kernel LAPICs say IDs 0..N−1, but CPUID would say every CPU is 0. Linux cross-checks these when bringing CPUs up and building topology, so it would mis-number CPUs or treat them as the same one. Topology leaves would also describe the host (e.g. 24 threads), so scheduler domains would be built from hardware that doesn't exist.</p>",
+   "regs.rs set_cpuid_topology"],
+  ["smp", "Why write the MP table even with one vCPU?",
+   "<p>So interrupt routing is the same in every configuration: always through the IOAPIC, never sometimes PIC. That replaced Phase 1's 'no MP table' rule, which was a deliberate spec change, and AC-0.5 re-runs the whole Phase 1 verify script to show nothing regressed.</p>",
+   "SPEC.md Architecture limits · AC-0.5"],
+  ["smp", "How do idle vCPUs get stopped on reboot, and what race does resending SIGRTMIN close?",
+   "<p>Main sets <code>stop</code> (Release) and sends SIGRTMIN with a no-op handler and no SA_RESTART, so a blocked KVM_RUN returns EINTR and the loop sees <code>stop</code> (Acquire). If a signal arrives after the thread checked <code>stop</code> but before it entered KVM_RUN, it's lost and the thread blocks. Resending every 10 ms until the thread finishes closes that window, and a 5 s deadline turns a stuck thread into exit 1.</p>",
+   "vcpu.rs stop_all · D2"],
+
+  // security
+  ["sec", "A guest exploits a bug in the MMIO path and runs code on a vCPU thread. What can it still do?",
+   "<p>Under the vCPU filter: KVM_RUN, write to any fd the process holds (stdout, eventfds), futex, non-executable mmap/mprotect, close, exit. It can't open files, create sockets, exec, pwrite the disk or make memory executable. But threads share an address space, so it could corrupt data the main thread uses and borrow main's syscalls indirectly. Seccomp shrinks the kernel attack surface; a jailer would add process-level isolation.</p>",
+   "src/seccomp.rs · phase-2 M7 Q3"],
+  ["sec", "Why KILL_PROCESS rather than returning an errno, or killing only the thread?",
+   "<p>Fail closed. An errno lets compromised code probe and retry, and normal code might mishandle it into odd states. Killing only one thread leaves a half-alive VMM whose other threads still touch guest memory and devices. The cost is that the terminal can't be restored on SIGSYS, which the spec states explicitly.</p>",
+   "SPEC.md M7 · AC-7.4"],
+  ["sec", "Why must PR_SET_NO_NEW_PRIVS be set, and why before the first thread spawns?",
+   "<p>An unprivileged process may only install a seccomp filter if no_new_privs is set, which guarantees it can never gain privileges later, for example by exec'ing a setuid binary to escape the filter. Threads inherit it at creation, so setting it once in main before any spawn covers every thread. The test checks NoNewPrivs: 1 on each.</p>",
+   "seccomp.rs set_no_new_privs · lib.rs run_boot"],
+  ["sec", "Why is the guest's virtio-net TX header zeroed?",
+   "<p>Its fields (GSO type, checksum start/offset) are instructions to the host kernel's network stack. No offloads were negotiated, so any non-zero value is garbage or an attack on host kernel code. Zeroing all 12 bytes means guest bytes never steer the host; only the frame passes through. Kani's net_tx_header_zeroed proves the result is zero.</p>",
+   "parse.rs zero_vnet_header · proofs.rs"],
+
+  // verification
+  ["ver", "What does bounded model checking give you that fuzzing doesn't, and the reverse?",
+   "<p>Kani encodes the code and property as a SAT problem and shows no counterexample exists for any input within the bounds (queue size 4, unwind 5): a proof, at a small size. Fuzzing runs the real code on millions of concrete inputs at realistic sizes (queue 16, the whole blk pipeline) and can only show bugs, never their absence. Together: exhaustive at small bounds, broad at real sizes.</p>",
+   "proofs.rs · fuzz/"],
+  ["ver", "Why must the parsers be pure functions over your own trait for Kani to work?",
+   "<p>Kani can't model KVM ioctls, a host mmap, or vm-memory's GuestMemory internals. A three-method trait lets the same code run on a symbolic KaniMem, a byte-vector VecMem for fuzzing, and GuestMemoryMmap in production. It's also why the spec rejected the virtio-queue crate (Q2).</p>",
+   "queue.rs GuestMem · Q2, D16"],
+  ["ver", "One harness took 15+ minutes; afterwards about a minute with the same coverage. What changed?",
+   "<p>It built the chain as <code>all[..n].to_vec()</code> with symbolic n, so everything downstream was heap data of symbolic length, which blows up the SAT encoding. Branching on n and passing slices of each concrete length 0..=4 covers exactly the same inputs with fixed sizes. Lesson: keep sizes concrete where the property allows, and make the attacker-controlled values symbolic.</p>",
+   "D43 · proofs.rs for_any_chain"],
+  ["ver", "Kani and the fuzzer found no bugs in your code. Is that good news?",
+   "<p>Only if the harnesses can fail. I checked: with the INDIRECT rejection removed from walk_chain, or the upper TX bound removed from parse_net_tx, the matching harness fails. Kani also found two real issues, in the spec's wording and in harness performance. And the proofs don't cover the transport, file I/O or RX path, so 'no bugs found' is scoped to what they check.</p>",
+   "notes/phase-2.md 'Bugs found'"],
+  ["ver", "What would you prove next?",
+   "<p>The virtio-mmio transport state machine (feature negotiation, freezing after DRIVER_OK, NEEDS_RESET), <code>parse_net_rx</code> and <code>has_available</code>, and larger queue sizes. Ordering and liveness properties (fences, lost notifications) need a different tool than these harnesses.</p>",
+   "notes/phase-2.md 'not cover'"],
+
+  // pitch / big picture
+  ["big", "What exactly is the difference between KVM, a hypervisor and a VMM, and which did you write?",
+   "<p>KVM is the Linux kernel module that uses VT-x/AMD-V to run guest code at native speed and virtualise memory; it exposes VMs and vCPUs through ioctls on /dev/kvm. The VMM is the user-space process that uses that API to build a machine: memory, boot, devices, I/O. KVM plus a VMM together form the hypervisor. I wrote a VMM, like Firecracker or QEMU in its KVM role.</p>",
+   "notes/phase-1.md"],
+  ["big", "Why Rust, and why the rust-vmm crates instead of writing everything?",
+   "<p>The VMM parses untrusted guest data; memory safety removes whole bug classes (overflows, use-after-free) that are classic VM-escape vectors. Unsafe is confined to 19 documented blocks. rust-vmm crates are the shared building blocks of Firecracker and Cloud Hypervisor (kvm-ioctls, vm-memory, linux-loader, seccompiler), so I reuse audited plumbing. The spec forbids copying those projects' code.</p>",
+   "Cargo.toml · SPEC.md global constraints"],
+  ["big", "If you had another month, what would Phase 3 be, and what would you do before it?",
+   "<p>The project spec names confidential computing (AMD SEV-SNP or Intel TDX with attestation), which needs special hardware. Before that: a jailer for process isolation, proofs for the transport, and closing the open spec-status drift. The rule is that the Phase 3 spec is written only after Phase 2 passes its verify script.</p>",
+   "SPEC.md Phases"]
+];
+const CATS = { sdd: "SDD process", own: "Your code", kvm: "KVM & x86", virtio: "virtio", net: "Network", smp: "SMP", sec: "Security", ver: "Verification", big: "Big picture" };
+const KEY = "mvm-drill-v1";
+let marks = {};
+try { marks = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { marks = {}; }
+let filter = "all";
+function save() { try { localStorage.setItem(KEY, JSON.stringify(marks)); } catch (e) {} }
+
+function renderChips() {
+  const host = document.getElementById("catChips");
+  const opts = [["all", "All"], ...Object.entries(CATS), ["shaky", "Shaky only"], ["unrated", "Unanswered"]];
+  host.innerHTML = opts.map(([k, v]) => `<button type="button" class="chip" data-f="${k}" aria-pressed="${k === filter}">${esc(v)}</button>`).join("");
+  host.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => { filter = b.dataset.f; renderChips(); renderList(); }));
+}
+function visible(i) {
+  const [cat] = Q[i];
+  if (filter === "all") return true;
+  if (filter === "shaky") return marks[i] === "shaky";
+  if (filter === "unrated") return !marks[i];
+  return cat === filter;
+}
+function renderList() {
+  const list = document.getElementById("qlist");
+  const items = Q.map((q, i) => [q, i]).filter(([, i]) => visible(i));
+  list.innerHTML = items.length ? items.map(([q, i]) => {
+    const m = marks[i] || "";
+    return `<article class="q ${m === "got" ? "got" : m === "shaky" ? "shaky" : ""}" id="q${i}">
+      <div class="qhead"><span class="qcat">${esc(CATS[q[0]])}</span></div>
+      <div class="qtext">${esc(q[1])}</div>
+      <details><summary>Show model answer</summary><div class="ans">${q[2]}<div class="where">Look here: ${esc(q[3])}</div></div></details>
+      <div class="rate">
+        <button type="button" class="btn g" data-i="${i}" data-m="got" aria-pressed="${m === "got"}">Got it</button>
+        <button type="button" class="btn w" data-i="${i}" data-m="shaky" aria-pressed="${m === "shaky"}">Shaky</button>
+      </div>
+    </article>`;
+  }).join("") : `<div class="card hint">Nothing here. ${filter === "shaky" ? "No questions are marked shaky." : "Every question in this filter is answered."}</div>`;
+  list.querySelectorAll(".rate button").forEach(b => b.addEventListener("click", () => {
+    const i = b.dataset.i, m = b.dataset.m;
+    marks[i] = marks[i] === m ? undefined : m;
+    if (!marks[i]) delete marks[i];
+    save(); renderList(); renderProgress();
+  }));
+}
+function renderProgress() {
+  const total = Q.length;
+  const got = Object.values(marks).filter(v => v === "got").length;
+  const shaky = Object.values(marks).filter(v => v === "shaky").length;
+  document.getElementById("progressText").textContent = `${got + shaky} of ${total} answered · ${got} got it · ${shaky} shaky`;
+  const bar = document.getElementById("progressBar").children;
+  bar[0].style.width = (got / total * 100) + "%";
+  bar[1].style.width = (shaky / total * 100) + "%";
+}
+document.getElementById("randomBtn").addEventListener("click", () => {
+  const pool = Q.map((_, i) => i).filter(i => !marks[i]);
+  if (!pool.length) { filter = "shaky"; renderChips(); renderList(); return; }
+  const i = pool[Math.floor(Math.random() * pool.length)];
+  filter = "all"; renderChips(); renderList();
+  const card = document.getElementById("q" + i);
+  if (card) {
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("flash"); setTimeout(() => card.classList.remove("flash"), 1600);
+  }
+});
+document.getElementById("resetBtn").addEventListener("click", () => {
+  const btn = document.getElementById("resetBtn");
+  if (btn.dataset.confirm !== "1") { btn.dataset.confirm = "1"; btn.textContent = "Click again to clear"; setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "Clear marks"; }, 3000); return; }
+  marks = {}; save(); btn.dataset.confirm = ""; btn.textContent = "Clear marks"; renderList(); renderProgress();
+});
+renderChips(); renderList(); renderProgress();
+</script>
+</body>
+</html>
