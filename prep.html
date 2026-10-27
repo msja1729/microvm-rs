@@ -116,10 +116,9 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
 <nav class="plan" aria-label="Study plan">
   <a href="#basics"><span class="min">10 min</span><span>1. What virtualization is (the basics)</span></a>
   <a href="#pitch"><span class="min">10 min</span><span>2. Your project in 60 seconds</span></a>
-  <a href="#parts"><span class="min">15 min</span><span>3. The parts you built, one by one</span></a>
-  <a href="#process"><span class="min">2 min</span><span>4. How you built it</span></a>
-  <a href="#questions"><span class="min">15 min</span><span>5. Five questions that explain the whole project</span></a>
-  <a href="#stuck"><span class="min">5 min</span><span>6. Numbers, honesty, and what to say when stuck</span></a>
+  <a href="#process"><span class="min">2 min</span><span>3. How you built it</span></a>
+  <a href="#questions"><span class="min">25 min</span><span>4. Five questions that explain the whole project</span></a>
+  <a href="#stuck"><span class="min">5 min</span><span>5. Honesty, and what to say when stuck</span></a>
 </nav>
 
 <!-- 1 BASICS -->
@@ -201,58 +200,9 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
   </div>
 </section>
 
-<!-- 3 PARTS -->
-<section id="parts">
-  <div class="sec-head"><span class="eyebrow">15 minutes</span><h2>3. The parts you built</h2></div>
-  <p>For each part: what it does in plain words, and the one reason behind it. The reason is what an examiner tests.</p>
-
-  <div class="parts">
-    <div class="card">
-      <h3>Booting Linux <small>Phase 1</small></h3>
-      <p>There's no BIOS. My program does the boot loader's job. It copies the Linux kernel into guest memory at 1 MiB, writes an info page (<code>boot_params</code>: how much RAM, the command line), builds page tables, and puts the CPU straight into 64-bit mode. Then it starts the vCPU at the kernel's entry point.</p>
-      <p><b>Why:</b> it's simpler and faster than emulating firmware. Firecracker does the same.</p>
-    </div>
-    <div class="card">
-      <h3>Serial console <small>Phase 1</small></h3>
-      <p>An emulated UART at port 0x3f8. When Linux writes a character there, that's a VM exit, and I print it. A separate thread reads your keyboard, puts keys into the UART and raises interrupt 4.</p>
-      <p><b>Why a separate thread:</b> when the guest is idle, the vCPU thread is asleep inside KVM, so it can't also read the keyboard.</p>
-    </div>
-    <div class="card">
-      <h3>virtio disk <small>Phase 2</small></h3>
-      <p>The guest sees a disk <code>/dev/vda</code>. It's really a 64 MiB file (<code>disk.ext4</code>) on the host. Data written in the guest stays in that file after the VM stops.</p>
-      <p><b>Why virtio instead of faking a real disk chip:</b> real hardware needs many VM exits per operation. virtio puts requests in shared memory and needs one "doorbell" per batch.</p>
-    </div>
-    <div class="card">
-      <h3>How virtio works <small>the queue</small></h3>
-      <p>The guest and my program share a <b>virtqueue</b> in guest memory. The guest writes a request ("read sector 8 into this buffer") and rings a doorbell. I read the request, do the file I/O, write back the result, and raise an interrupt.</p>
-      <p><b>Key point:</b> the guest controls that memory, so I check every field: is the buffer inside RAM? Is the sector inside the disk? Does the chain of buffers loop forever?</p>
-    </div>
-    <div class="card">
-      <h3>virtio network <small>Phase 2</small></h3>
-      <p>The guest gets a network card <code>eth0</code>. On the host it's connected to a <b>TAP</b> device (<code>vmtap0</code>, 172.16.0.1), which is like a virtual network cable. The guest can ping the host.</p>
-      <p><b>Why sudo is needed once:</b> creating the TAP needs admin rights (<code>setup-tap.sh</code>). After that, the VMM itself runs as a normal user.</p>
-    </div>
-    <div class="card">
-      <h3>Multiple CPUs <small>Phase 2</small></h3>
-      <p>Up to 4 vCPUs, one thread each. I write an <b>MP table</b> into guest memory, which is a small table that tells Linux how many CPUs there are. CPU 0 starts first; Linux then wakes the others.</p>
-      <p><b>Hard part:</b> shutting down. Idle vCPUs are asleep inside KVM, so I send each thread a signal to wake it, then wait for it to finish.</p>
-    </div>
-    <div class="card">
-      <h3>seccomp filters <small>Phase 2</small></h3>
-      <p>Each thread gets a list of allowed system calls. For example, only vCPU threads may run the guest, and only the main thread may read and write the disk file. Nobody may open files or start programs. Anything outside the list kills the whole VMM.</p>
-      <p><b>Why:</b> if a guest ever exploited a bug in my program, it still couldn't do much on the host.</p>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Why Rust?</h3>
-    <p>A VMM reads data from an untrusted guest. In C, one mistake there (a buffer overflow) can let the guest escape onto the host. Rust prevents that whole class of bugs. The few places that need <code>unsafe</code> (19 blocks, mostly talking to KVM) each have a comment explaining why they're safe.</p>
-  </div>
-</section>
-
-<!-- 4 PROCESS -->
+<!-- 3 PROCESS -->
 <section id="process">
-  <div class="sec-head"><span class="eyebrow">2 minutes</span><h2>4. How you built it</h2></div>
+  <div class="sec-head"><span class="eyebrow">2 minutes</span><h2>3. How you built it</h2></div>
   <div class="say">
     <b class="lbl">Say it</b>
     <p>I used spec-driven development with an AI coding agent, Claude Code. In short: <b>write down what it must do, then build it in small steps, then check every requirement.</b></p>
@@ -265,9 +215,9 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
   </div>
 </section>
 
-<!-- 5 QUESTIONS -->
+<!-- 4 QUESTIONS -->
 <section id="questions">
-  <div class="sec-head"><span class="eyebrow">15 minutes</span><h2>5. Five questions that explain the whole project</h2></div>
+  <div class="sec-head"><span class="eyebrow">25 minutes</span><h2>4. Five questions that explain the whole project</h2></div>
   <div class="progress">
     <span id="prog"></span>
     <button class="btn" id="openAll" type="button">Open all answers</button>
@@ -276,24 +226,9 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
   <div class="qs" id="qs"></div>
 </section>
 
-<!-- 6 NUMBERS / STUCK -->
+<!-- 5 STUCK -->
 <section id="stuck">
-  <div class="sec-head"><span class="eyebrow">5 minutes</span><h2>6. Numbers, honesty, and getting unstuck</h2></div>
-  <div class="card tbl">
-    <h3>Numbers worth knowing</h3>
-    <table>
-      <tr><td>Boot time with disk, network and 4 CPUs</td><td class="n">≈ 4 s</td></tr>
-      <tr><td>Size of the Rust code</td><td class="n">≈ 6,200 lines</td></tr>
-      <tr><td>Tests</td><td class="n">69 unit + 26 integration</td></tr>
-      <tr><td>Acceptance criteria</td><td class="n">22 + 35 = 57</td></tr>
-      <tr><td>Logged decisions</td><td class="n">72</td></tr>
-      <tr><td><code>unsafe</code> blocks, all commented</td><td class="n">19</td></tr>
-      <tr><td>Max vCPUs · max guest RAM</td><td class="n">4 · 3 GiB</td></tr>
-      <tr><td>Disk size</td><td class="n">64 MiB</td></tr>
-      <tr><td>Exit codes</td><td class="n">0 ok · 1 error · 2 bad setup</td></tr>
-      <tr><td>Release</td><td class="n">v0.2.0 on GitHub</td></tr>
-    </table>
-  </div>
+  <div class="sec-head"><span class="eyebrow">5 minutes</span><h2>5. Honesty, and what to say when stuck</h2></div>
 
   <div class="card">
     <h3>"Did you write this yourself?"</h3>
