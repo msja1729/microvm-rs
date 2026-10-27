@@ -117,7 +117,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
   <a href="#basics"><span class="min">10 min</span><span>1. What virtualization is (the basics)</span></a>
   <a href="#pitch"><span class="min">10 min</span><span>2. Your project in 60 seconds</span></a>
   <a href="#parts"><span class="min">15 min</span><span>3. The parts you built, one by one</span></a>
-  <a href="#process"><span class="min">5 min</span><span>4. How you built it (spec-driven development)</span></a>
+  <a href="#process"><span class="min">2 min</span><span>4. How you built it</span></a>
   <a href="#questions"><span class="min">15 min</span><span>5. Five questions that explain the whole project</span></a>
   <a href="#stuck"><span class="min">5 min</span><span>6. Numbers, honesty, and what to say when stuck</span></a>
 </nav>
@@ -252,20 +252,16 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
 
 <!-- 4 PROCESS -->
 <section id="process">
-  <div class="sec-head"><span class="eyebrow">5 minutes</span><h2>4. How you built it: spec-driven development</h2></div>
-  <div class="card">
-    <ol>
-      <li><b>Spec:</b> wrote down what each phase must do, with pass/fail acceptance criteria (22 for Phase 1, 35 for Phase 2).</li>
-      <li><b>Plan:</b> the AI agent (Claude Code) drafted a plan, and I approved it before any code was written.</li>
-      <li><b>Implement:</b> one milestone at a time (M1 to M8), each one approved before the next. Every choice was logged in <code>DECISIONS.md</code> (72 in total).</li>
-      <li><b>Verify:</b> a script runs a check for every acceptance criterion and prints PASS/FAIL.</li>
-      <li><b>Iterate:</b> when something is wrong, fix the spec first if the spec was wrong.</li>
-    </ol>
-  </div>
+  <div class="sec-head"><span class="eyebrow">2 minutes</span><h2>4. How you built it</h2></div>
   <div class="say">
-    <b class="lbl">Your best story: memorise this one</b>
-    <p>After a Windows/WSL2 update, the host started putting a seccomp filter on every program. One of my tests checked "does each thread have a filter?", so it started passing even with my VMM's filter switched off. The test was lying.</p>
-    <p>I noticed, and changed the test to count how many filters my VMM adds on top of the ones the host already has. The spec stayed the same, because the requirement was still right; only the way the test measured it was wrong. I logged the choice in <code>DECISIONS.md</code> (decision D48). The lesson: a passing test only means something if it can also fail.</p>
+    <b class="lbl">Say it</b>
+    <p>I used spec-driven development with an AI coding agent, Claude Code. In short: <b>write down what it must do, then build it in small steps, then check every requirement.</b></p>
+    <ul>
+      <li><b>Spec:</b> a document listing what the VMM must do, with pass/fail tests (57 in total).</li>
+      <li><b>Small steps:</b> 8 milestones. I approved each one before the next started, and every design choice was written down with its reason.</li>
+      <li><b>Check:</b> a script runs all the tests and prints PASS or FAIL for each.</li>
+    </ul>
+    <p><b>One problem I hit:</b> after a Windows update, one test passed even with the feature switched off. I fixed the test so it can really fail.</p>
   </div>
 </section>
 
