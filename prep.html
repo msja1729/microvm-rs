@@ -118,7 +118,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
   <a href="#pitch"><span class="min">10 min</span><span>2. Your project in 60 seconds</span></a>
   <a href="#parts"><span class="min">15 min</span><span>3. The parts you built, one by one</span></a>
   <a href="#process"><span class="min">5 min</span><span>4. How you built it (spec-driven development)</span></a>
-  <a href="#questions"><span class="min">15 min</span><span>5. The 20 most likely questions</span></a>
+  <a href="#questions"><span class="min">15 min</span><span>5. The most likely questions</span></a>
   <a href="#stuck"><span class="min">5 min</span><span>6. Numbers, honesty, and what to say when stuck</span></a>
 </nav>
 
@@ -187,7 +187,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
     <p>microvm-rs is a small virtual machine monitor written in Rust, in the style of Amazon's Firecracker. It uses Linux KVM.</p>
     <p>It boots a normal Linux kernel in about four seconds. The guest gets a virtual disk, which is a file on the host, a virtual network card, and up to four CPUs.</p>
     <p>KVM does the hard CPU and memory work. My program does the rest: it gives the guest its memory, loads Linux like a boot loader, and pretends to be the devices.</p>
-    <p>I treated the guest as an attacker, so everything it sends me is checked. The checking code is verified with a tool called Kani and with fuzzing, and every thread runs under a seccomp filter.</p>
+    <p>I treated the guest as an attacker, so everything it sends me is checked, and every thread runs under a seccomp filter that limits what it can do on the host.</p>
     <p>I built it in two phases, using spec-driven development: a written spec with pass/fail tests, then a plan, then one milestone at a time, with a script that checks every requirement.</p>
   </div>
 
@@ -195,7 +195,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
     <h3>Phase 1 and Phase 2 in one line each</h3>
     <ul>
       <li><b>Phase 1, boot Linux:</b> run tiny test programs in 16-bit and 64-bit mode, then boot a real Linux kernel with a serial console you can type into. Reboot inside the guest cleanly exits the VMM.</li>
-      <li><b>Phase 2, a useful machine:</b> add a virtio disk, a virtio network card, up to 4 vCPUs, seccomp filters, and Kani proofs plus fuzzing for the code that reads guest data.</li>
+      <li><b>Phase 2, a useful machine:</b> add a virtio disk, a virtio network card, up to 4 vCPUs, and seccomp filters.</li>
       <li><b>Phase 3 (not built):</b> confidential VMs (AMD SEV-SNP / Intel TDX). These need special hardware.</li>
     </ul>
   </div>
@@ -242,12 +242,6 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
       <p>Each thread gets a list of allowed system calls. For example, only vCPU threads may run the guest, and only the main thread may read and write the disk file. Nobody may open files or start programs. Anything outside the list kills the whole VMM.</p>
       <p><b>Why:</b> if a guest ever exploited a bug in my program, it still couldn't do much on the host.</p>
     </div>
-    <div class="card">
-      <h3>Kani and fuzzing <small>Phase 2</small></h3>
-      <p><b>Kani</b> is a model checker: it mathematically checks <i>every possible input</i>, up to a small size (queue of 4), and proves my parsing code never crashes or reads outside memory. 7 proofs, about 1 minute.</p>
-      <p><b>Fuzzing</b> throws millions of random inputs at the real code at a bigger size. It ran 300 seconds with 0 crashes.</p>
-      <p><b>Why both:</b> Kani is complete but small; fuzzing is big but random.</p>
-    </div>
   </div>
 
   <div class="card">
@@ -270,16 +264,16 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
   </div>
   <div class="say">
     <b class="lbl">Your best story: memorise this one</b>
-    <p>The Kani proof tool found a case where my spec's claim wasn't true. The spec said "a chain of buffers that loops back is always rejected." But if the guest changes memory while I'm reading it, a loop can end early instead.</p>
-    <p>The code was still safe: it reads each item once and always stops within the queue size. So I changed the spec's wording, not the code, and logged why. That's the point of spec-driven development: the spec is the source of truth, so you fix it when it's wrong.</p>
+    <p>After a Windows/WSL2 update, the host started putting a seccomp filter on every program. One of my tests checked "does each thread have a filter?", so it started passing even with my VMM's filter switched off. The test was lying.</p>
+    <p>I noticed, and changed the test to count how many filters my VMM adds on top of the ones the host already has. The spec stayed the same, because the requirement was still right; only the way the test measured it was wrong. I logged the choice in <code>DECISIONS.md</code> (decision D48). The lesson: a passing test only means something if it can also fail.</p>
   </div>
 </section>
 
 <!-- 5 QUESTIONS -->
 <section id="questions">
-  <div class="sec-head"><span class="eyebrow">15 minutes</span><h2>5. The 20 most likely questions</h2></div>
+  <div class="sec-head"><span class="eyebrow">15 minutes</span><h2>5. The most likely questions</h2></div>
   <div class="progress">
-    <span id="prog">0 of 20 ready</span>
+    <span id="prog"></span>
     <button class="btn" id="openAll" type="button">Open all answers</button>
   </div>
   <p>Say your answer out loud first, then open it. Press "I can say this" when you can. Your ticks stay in this browser.</p>
@@ -297,7 +291,6 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
       <tr><td>Tests</td><td class="n">69 unit + 26 integration</td></tr>
       <tr><td>Acceptance criteria</td><td class="n">22 + 35 = 57</td></tr>
       <tr><td>Logged decisions</td><td class="n">72</td></tr>
-      <tr><td>Kani proofs / fuzzing</td><td class="n">7 proofs · 300 s, 0 crashes</td></tr>
       <tr><td><code>unsafe</code> blocks, all commented</td><td class="n">19</td></tr>
       <tr><td>Max vCPUs · max guest RAM</td><td class="n">4 · 3 GiB</td></tr>
       <tr><td>Disk size</td><td class="n">64 MiB</td></tr>
@@ -362,10 +355,6 @@ const Q = [
   ["What exactly do you check in a guest request?",
    "That every buffer is entirely inside guest RAM, the sector range is inside the disk, the numbers don't overflow, the chain of buffers can't loop forever, and the buffer directions are right (read vs. write). I read each value once into my own copy, so the guest can't change it after I've checked it.",
    "That last part is called time-of-check to time-of-use (TOCTOU)."],
-  ["What is Kani and what did it prove?",
-   "Kani is a model checker for Rust. It doesn't run random tests; it checks all possible inputs up to a size limit. It proved that my request-parsing code never panics, never overflows, only accepts buffers inside memory, and always stops. That's 7 proofs, at queue size 4.", ""],
-  ["Why fuzzing as well as Kani?",
-   "Kani covers every input, but only at a small size. Fuzzing runs the real code on millions of random inputs at a realistic size. Together they cover both. Fuzzing ran 300 seconds with no crashes.", ""],
   ["What is seccomp and how do you use it?",
    "seccomp lets a program restrict which system calls it can make. Each of my threads installs its own allowlist: vCPU threads can run the guest, the main thread can read and write the disk file, and no thread can open files, create sockets or start programs. Any other call kills the VMM.",
    "Why kill rather than return an error? Failing closed is safer than letting an attacker probe."],
@@ -381,12 +370,13 @@ const Q = [
    "Linux writes a reset command to the keyboard controller port (0x64). My program sees that VM exit, tells all threads to stop, wakes any sleeping vCPU threads with a signal, waits for them, restores the terminal, and exits with code 0.", ""],
   ["What is spec-driven development and how did you use it?",
    "Write what the system must do first, with pass/fail criteria. Then plan, then build one milestone at a time, then verify against the spec. I had 57 acceptance criteria across two phases, an approved plan per phase, 8 milestones, 72 logged decisions, and a script that checks every criterion.", ""],
-  ["Tell me about a time the spec was wrong.",
-   "Kani found that one acceptance criterion claimed something too strong. It said a looping buffer chain is always rejected, but if the guest changes memory mid-read, the loop can end early instead. The code was still safe, so I changed the spec's wording rather than the code, and logged the reason.", ""],
+  ["Tell me about a problem you ran into.",
+   "After a WSL2 update, the host put a seccomp filter on every program, so my test \"does each thread have a filter?\" passed even with my filter off. I changed the test to count the filters my VMM adds on top of the host's. The spec didn't change, only the measurement, and I logged it as decision D48.",
+   "Lesson: a passing test only means something if it can also fail."],
   ["What are the limitations of your VMM?",
-   "No snapshots, no API socket, no jailer (process isolation), no PCI, only virtio over memory-mapped I/O, and at most 4 CPUs and 3 GiB of RAM. The proofs cover the parsing code, not every part. These were deliberately out of scope in the spec.", ""],
+   "No snapshots, no API socket, no jailer (process isolation), no PCI, only virtio over memory-mapped I/O, and at most 4 CPUs and 3 GiB of RAM. These were deliberately out of scope in the spec.", ""],
   ["What would you do next?",
-   "Phase 3 in the project spec is confidential computing: AMD SEV-SNP or Intel TDX, where even the host can't read the guest's memory. That needs special hardware. Before that I'd add a jailer and extend the proofs to more of the device code.", ""]
+   "Phase 3 in the project spec is confidential computing: AMD SEV-SNP or Intel TDX, where even the host can't read the guest's memory. That needs special hardware. Before that I'd add a jailer for stronger process isolation.", ""]
 ];
 const KEY = "mvm-simple-v1";
 let done = {};
