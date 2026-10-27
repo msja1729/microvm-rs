@@ -118,7 +118,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
   <a href="#pitch"><span class="min">10 min</span><span>2. Your project in 60 seconds</span></a>
   <a href="#parts"><span class="min">15 min</span><span>3. The parts you built, one by one</span></a>
   <a href="#process"><span class="min">5 min</span><span>4. How you built it (spec-driven development)</span></a>
-  <a href="#questions"><span class="min">15 min</span><span>5. The most likely questions</span></a>
+  <a href="#questions"><span class="min">15 min</span><span>5. Five questions that explain the whole project</span></a>
   <a href="#stuck"><span class="min">5 min</span><span>6. Numbers, honesty, and what to say when stuck</span></a>
 </nav>
 
@@ -271,12 +271,12 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
 
 <!-- 5 QUESTIONS -->
 <section id="questions">
-  <div class="sec-head"><span class="eyebrow">15 minutes</span><h2>5. The most likely questions</h2></div>
+  <div class="sec-head"><span class="eyebrow">15 minutes</span><h2>5. Five questions that explain the whole project</h2></div>
   <div class="progress">
     <span id="prog"></span>
     <button class="btn" id="openAll" type="button">Open all answers</button>
   </div>
-  <p>Say your answer out loud first, then open it. Press "I can say this" when you can. Your ticks stay in this browser.</p>
+  <p>If you can answer these five in your own words, you understand the project. Say your answer out loud first, then open it. Press "I can say this" when you can. Your ticks stay in this browser.</p>
   <div class="qs" id="qs"></div>
 </section>
 
@@ -334,49 +334,21 @@ reboot -f                             <span class="c"># VMM exits cleanly with c
 
 <script>
 const Q = [
-  ["What is a hypervisor, and what's the difference between KVM and your VMM?",
-   "A hypervisor lets one computer run other computers (VMs). KVM is the part inside the Linux kernel that uses the CPU's virtualization support to run guest code at full speed. My VMM is the normal program on top that sets up the VM: its memory, booting Linux, and the fake devices. KVM plus a VMM together make the hypervisor.",
-   "Follow-up: \"Is QEMU a VMM?\" Yes. QEMU and Firecracker are both VMMs that use KVM."],
-  ["What is a VM exit?",
-   "The guest runs directly on the real CPU. When it touches something that should be hardware, like writing to a device port, the CPU stops it and hands control to KVM, which passes it to my program. I emulate the device and resume the guest.",
-   "Example: every character Linux prints to the serial console is a VM exit that my program turns into output on the terminal."],
-  ["Walk me through what happens when you start your VMM.",
-   "1) Open /dev/kvm and create a VM. 2) Give it memory. 3) Load the Linux kernel and the info page into that memory. 4) Create the vCPUs and set up the first one in 64-bit mode at the kernel's entry point. 5) Set up the devices. 6) Start a thread per vCPU that loops on KVM_RUN, and the main thread handles disk and network events.",
-   "Keep it to these six steps. Detail only if asked."],
-  ["Why don't you need a BIOS?",
-   "A BIOS's job is to set up the CPU and load the operating system. My VMM does that directly: it copies the kernel into memory, sets the CPU straight into 64-bit mode, and starts it at the kernel's entry point. It's faster and much less code. Firecracker does the same.", ""],
-  ["What is virtio and why use it?",
-   "virtio is a standard for virtual devices built for VMs. Instead of copying a real disk chip, which needs many VM exits per operation, the guest puts requests in a shared queue in memory and rings a doorbell once. It's faster and simpler, which also means less code that can have bugs.", ""],
-  ["How does a disk read work, end to end?",
-   "The guest writes a request into the shared queue (\"read sector X into this buffer\") and writes to a doorbell address. KVM signals my main thread without stopping the guest. My code checks the request, reads from the disk file into guest memory, writes a status byte, and raises an interrupt. The guest's driver sees the result.",
-   "Key words: queue, doorbell, check, read file, interrupt."],
-  ["Why is the guest treated as untrusted?",
-   "In the cloud, the VM belongs to a customer, possibly an attacker. If my program trusts something the guest wrote, like a buffer address or length, the guest could make me read or write host memory and escape the VM. So every value from the guest is checked before use.", ""],
-  ["What exactly do you check in a guest request?",
-   "That every buffer is entirely inside guest RAM, the sector range is inside the disk, the numbers don't overflow, the chain of buffers can't loop forever, and the buffer directions are right (read vs. write). I read each value once into my own copy, so the guest can't change it after I've checked it.",
-   "That last part is called time-of-check to time-of-use (TOCTOU)."],
-  ["What is seccomp and how do you use it?",
-   "seccomp lets a program restrict which system calls it can make. Each of my threads installs its own allowlist: vCPU threads can run the guest, the main thread can read and write the disk file, and no thread can open files, create sockets or start programs. Any other call kills the VMM.",
-   "Why kill rather than return an error? Failing closed is safer than letting an attacker probe."],
-  ["How do multiple CPUs work?",
-   "Each vCPU is its own thread calling KVM_RUN. I write an MP table into guest memory that tells Linux there are N CPUs. Only CPU 0 starts; Linux wakes the others itself through KVM's built-in interrupt controller.", ""],
-  ["How does networking work?",
-   "The guest has a virtio network card. On the host side it's connected to a TAP device, a virtual network interface. Frames the guest sends go to the TAP; frames arriving on the TAP go into the guest's receive queue. The host is 172.16.0.1, and the guest can ping it.", ""],
-  ["Why Rust?",
-   "The VMM handles untrusted data, and memory bugs in C are the classic way to escape a VM. Rust removes those bugs at compile time. The only unsafe code is 19 small, commented blocks, mostly the calls into KVM.", ""],
-  ["How does the keyboard input reach the guest?",
-   "A separate thread reads the terminal. It puts each character into the emulated serial chip's buffer and raises interrupt 4 through KVM, which wakes the guest even if it's idle. It has to be a separate thread because an idle vCPU thread is asleep inside KVM.", ""],
-  ["What happens when the guest runs `reboot`?",
-   "Linux writes a reset command to the keyboard controller port (0x64). My program sees that VM exit, tells all threads to stop, wakes any sleeping vCPU threads with a signal, waits for them, restores the terminal, and exits with code 0.", ""],
-  ["What is spec-driven development and how did you use it?",
-   "Write what the system must do first, with pass/fail criteria. Then plan, then build one milestone at a time, then verify against the spec. I had 57 acceptance criteria across two phases, an approved plan per phase, 8 milestones, 72 logged decisions, and a script that checks every criterion.", ""],
-  ["Tell me about a problem you ran into.",
-   "After a WSL2 update, the host put a seccomp filter on every program, so my test \"does each thread have a filter?\" passed even with my filter off. I changed the test to count the filters my VMM adds on top of the host's. The spec didn't change, only the measurement, and I logged it as decision D48.",
-   "Lesson: a passing test only means something if it can also fail."],
-  ["What are the limitations of your VMM?",
-   "No snapshots, no API socket, no jailer (process isolation), no PCI, only virtio over memory-mapped I/O, and at most 4 CPUs and 3 GiB of RAM. These were deliberately out of scope in the spec.", ""],
-  ["What would you do next?",
-   "Phase 3 in the project spec is confidential computing: AMD SEV-SNP or Intel TDX, where even the host can't read the guest's memory. That needs special hardware. Before that I'd add a jailer for stronger process isolation.", ""]
+  ["What is a hypervisor, and what is the difference between KVM and your VMM?",
+   "A hypervisor lets one computer run other computers, called virtual machines. It has two halves. KVM is the half inside the Linux kernel: it uses the CPU's virtualization support (Intel VT-x) to run guest code directly on the real CPU at full speed. My VMM, microvm-rs, is the other half: a normal Rust program that builds the virtual machine. It gives the guest its memory, loads Linux into it, and pretends to be the devices (console, disk, network card). My program talks to KVM through /dev/kvm using ioctl calls.",
+   "If asked for examples: QEMU and Amazon's Firecracker are also VMMs that use KVM. Mine is a small one in the style of Firecracker."],
+  ["What is a VM exit, and why is it the heart of a VMM?",
+   "The guest runs directly on the real CPU. When it touches something that should be hardware, for example writing a character to the serial port at 0x3f8, the CPU stops the guest. That's a VM exit. KVM tells my program what the guest wanted. My program does the job, here printing the character on the terminal, and tells KVM to resume the guest. Each vCPU is a thread running this loop: KVM_RUN, handle the exit, KVM_RUN again. Every device I emulate is just a way of answering exits.",
+   "Follow-up: keyboard input goes the other way. A separate thread reads the terminal, puts the key in the emulated serial chip and raises interrupt 4, which wakes the guest. It has to be a separate thread because an idle vCPU thread is asleep inside KVM."],
+  ["Walk me through what happens when you start your VMM and it boots Linux.",
+   "1) Open /dev/kvm and create a VM. 2) Give it a block of memory as its RAM. 3) Do the boot loader's job, since there's no BIOS: copy the Linux kernel into guest memory at 1 MiB and write an info page (boot_params) saying how much RAM there is and what the command line is. 4) Create the vCPUs (up to 4) and put the first one straight into 64-bit mode, pointing at the kernel's entry point. Write an MP table so Linux knows how many CPUs it has. 5) Set up the devices: serial console, disk, network. 6) Start one thread per vCPU running the exit loop; the main thread handles disk and network work. Linux boots in about 4 seconds. When you type reboot in the guest, my program stops all threads, restores the terminal and exits with code 0.",
+   "Why no BIOS: it's faster and much less code. Firecracker does the same."],
+  ["How does the virtual disk work? Walk me through one read.",
+   "The guest sees a disk, /dev/vda, which is really a 64 MiB file (disk.ext4) on the host. It uses virtio, a standard for virtual devices. Instead of copying a real disk chip, which costs many VM exits per operation, the guest and my program share a queue in guest memory. A read goes like this: the guest writes a request into the queue (\"read sector X into this buffer\") and writes to a doorbell address. KVM signals my main thread without stopping the guest. My code checks the request, reads from the file into guest memory, writes a status byte, and raises an interrupt. The guest's driver picks up the result.",
+   "The network card works the same way, with two queues (send and receive), connected to a TAP device on the host (vmtap0, 172.16.0.1). The guest can ping the host."],
+  ["The guest is untrusted. How do you protect the host?",
+   "In the cloud a VM may belong to an attacker. If my program trusted an address or length the guest wrote, the guest could make me read or write host memory and escape. There are three layers. First, I check everything the guest sends: every buffer must be inside guest RAM, every sector inside the disk, numbers must not overflow, and a chain of buffers can't loop forever. I copy each value once before checking it, so the guest can't change it afterwards. Second, I used Rust, which rules out memory bugs like buffer overflows; the 19 unsafe blocks are mostly KVM calls, each with a comment. Third, seccomp: each thread has a list of allowed system calls (only vCPU threads may run the guest, only the main thread may touch the disk file, nobody may open files or start programs), and anything else kills the VMM.",
+   "Why kill instead of returning an error? Failing closed is safer than letting an attacker try again."]
 ];
 const KEY = "mvm-simple-v1";
 let done = {};
